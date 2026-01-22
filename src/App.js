@@ -456,13 +456,13 @@ export default function App() {
               ref={commonFileInputRef}
               className="hidden-file-input"
             />
-            <button
+            {/*<button
               className="btn file-select-btn"
               onClick={() => commonFileInputRef.current?.click()}
             >
               Choose File (txt)
             </button>
-            <div className="spacer" />
+            <div className="spacer" />*/}
             <button
               className="btn primary"
               onClick={processLogs}
@@ -649,6 +649,9 @@ export default function App() {
 
   const profileRangeCtrl = useStableInput(profileRange, setProfileRange);
 
+  const [profileListInput, setProfileListInput] = useState("");
+  const profileListCtrl = useStableInput(profileListInput, setProfileListInput);
+
   // Normalize status for grouping
   const normalizeStatus = (status) => {
     return status.trim().toLowerCase().replace(/_/g, " ");
@@ -703,6 +706,15 @@ export default function App() {
       allProfiles: Array.from(allProfiles).sort((a, b) => a - b),
     };
   };
+  // Parse explicit profiles list: "4501, 4502\n4503"
+  const parseProfileList = (input) => {
+    return input
+      .split(/[\s,]+/)
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => !isNaN(n));
+  };
 
   const processCleanLogs = () => {
     setCleanError("");
@@ -716,19 +728,43 @@ export default function App() {
       return;
     }
 
-    if (!profileRange.trim()) {
-      setCleanError(
-        "Please enter at least one profile range (e.g. 1-800 or 1-800 + 2701-3120)"
-      );
-      return;
+    let rangeProfiles = null;
+    let listProfiles = null;
+
+    // Parse ranges if provided
+    if (profileRange.trim()) {
+      try {
+        rangeProfiles = new Set(parseProfileRanges(profileRange).allProfiles);
+      } catch (err) {
+        setCleanError(err.message);
+        return;
+      }
     }
 
+    // Parse explicit profile list if provided
+    if (profileListInput.trim()) {
+      const parsedList = parseProfileList(profileListInput);
+      if (parsedList.length === 0) {
+        setCleanError("Profile list is invalid or empty.");
+        return;
+      }
+      listProfiles = new Set(parsedList);
+    }
+
+    // Decide final target profiles
     let targetProfiles;
-    try {
-      const parsed = parseProfileRanges(profileRange);
-      targetProfiles = new Set(parsed.allProfiles);
-    } catch (err) {
-      setCleanError(err.message);
+
+    if (rangeProfiles && listProfiles) {
+      // Intersection
+      targetProfiles = new Set(
+        [...listProfiles].filter((p) => rangeProfiles.has(p))
+      );
+    } else if (rangeProfiles) {
+      targetProfiles = rangeProfiles;
+    } else if (listProfiles) {
+      targetProfiles = listProfiles;
+    } else {
+      setCleanError("Please enter Profile Range or Profile List.");
       return;
     }
 
@@ -779,9 +815,11 @@ export default function App() {
     setCleanOutput(sortedGrouped);
 
     // Missing profiles
-    const { allProfiles } = parseProfileRanges(profileRange);
     const present = new Set(uniqueEntries.map((e) => e.profile));
-    const missing = allProfiles.filter((p) => !present.has(p)).map(String);
+    const missing = [...targetProfiles]
+      .filter((p) => !present.has(p))
+      .map(String);
+
     setMissingProfiles(missing);
 
     // Chart data
@@ -869,17 +907,35 @@ export default function App() {
                 width: "280px",
                 padding: "10px 12px",
                 borderRadius: "8px",
-                border: "1px solid var(--color-border)",
+                border: "4px solid var(--color-border)",
                 fontSize: "0.95rem",
-                backgroundColor: "var(--color-bg)",
+                backgroundColor: "transparent",
                 color: "var(--color-text)",
               }}
             />
-            <div className="spacer" />
+            <p className="muted" style={{ fontSize: "0.85rem", marginTop: 8 }}>
+              Use + to add multiple ranges →{" "}
+              <code>1-800 + 2701-3120 + 5000-5100</code>
+            </p>
+            <label className="label" style={{ marginTop: 10 }}>
+              Profiles List (optional: commas, spaces or one per line):
+            </label>
+            <textarea
+              ref={profileListCtrl.ref}
+              className="input-area"
+              rows={3}
+              placeholder="commas, spaces or one per line"
+              value={profileListCtrl.value}
+              onChange={profileListCtrl.onChange}
+            />
+
             <button
               className="btn primary"
               onClick={processCleanLogs}
-              disabled={!cleanInput.trim() || !profileRange.trim()}
+              disabled={
+                !cleanInput.trim() ||
+                (!profileRange.trim() && !profileListInput.trim())
+              }
             >
               Analyze Logs
             </button>
@@ -893,16 +949,12 @@ export default function App() {
                 setCleanChartData([]);
                 setCleanError("");
                 setParsedEntries([]);
+                setProfileListInput("");
               }}
             >
               Clear
             </button>
           </div>
-
-          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 8 }}>
-            Use + to add multiple ranges →{" "}
-            <code>1-800 + 2701-3120 + 5000-5100</code>
-          </p>
 
           {cleanError && <div className="error">{cleanError}</div>}
         </div>
@@ -1299,8 +1351,8 @@ export default function App() {
       const session = parts[2];
       const emailOrder = parts[3];
 
-      const entity = session.substring(0, 4);
-      if (!/^[A-Z0-9]{4}$/.test(entity)) continue;
+      const entity = session.split("_")[0];
+      if (!/^CMH\d+$/.test(entity)) continue;
 
       const row = { email, session, emailOrder, entity };
 
@@ -1455,13 +1507,15 @@ export default function App() {
               ref={bounceFileInputRef}
               className="hidden-file-input"
             />
-            <button
-              className="btn file-select-btn"
-              onClick={() => bounceFileInputRef.current?.click()}
-            >
-              Choose File (txt)
-            </button>
-            <div className="spacer" />
+            {/*
+<button
+  className="btn file-select-btn"
+  onClick={() => bounceFileInputRef.current?.click()}
+>
+  Choose File (txt)
+</button>
+
+            <div className="spacer" />*/}
             <button
               className="btn primary"
               onClick={processBounceLogs}
@@ -1500,9 +1554,9 @@ export default function App() {
                   width: "100%",
                   padding: "10px 12px",
                   borderRadius: "8px",
-                  border: "1px solid var(--color-border)",
+                  border: "4px solid var(--color-border)",
                   fontSize: "0.95rem",
-                  background: "var(--color-bg)",
+                  background: "transparent",
                   color: "var(--color-text)",
                 }}
                 autoComplete="off"
@@ -1523,9 +1577,9 @@ export default function App() {
                   height: "120px",
                   padding: "10px 12px",
                   borderRadius: "8px",
-                  border: "1px solid var(--color-border)",
+                  border: "4px solid var(--color-border)",
                   fontSize: "0.95rem",
-                  background: "var(--color-bg)",
+                  background: "transparent",
                   color: "var(--color-text)",
                   resize: "vertical",
                 }}
@@ -1568,13 +1622,13 @@ export default function App() {
               ref={entityFileInputRef}
               className="hidden-file-input"
             />
-            <button
+            {/*<button
               className="btn file-select-btn"
               onClick={() => entityFileInputRef.current?.click()}
             >
               Choose File (txt)
             </button>
-            <div className="spacer" />
+            <div className="spacer" />*/}
             <button
               className="btn primary"
               onClick={processEntityList}
@@ -1832,7 +1886,6 @@ export default function App() {
     { name: "Connect", type: "one-time", color: "#2563eb" },
     { name: "Add Birthday", type: "one-time", color: "#9333ea" },
     { name: "Add Address", type: "one-time", color: "#9333ea" },
-    { name: "Recent Activity", type: "one-time", color: "#9333ea" },
     { name: "Language", type: "one-time", color: "#9333ea" },
     { name: "Change Picture", type: "one-time", color: "#9333ea" },
     { name: "Gender", type: "one-time", color: "#9333ea" },
@@ -1906,6 +1959,8 @@ export default function App() {
     setActions((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const LOCKED_DAYS = new Set([0, 1]); // Day 1 & Day 2
+
   const generatePlan = () => {
     setPlannerError("");
     setPlan([]);
@@ -1921,31 +1976,26 @@ export default function App() {
 
     /* ================= ACTIONS ================= */
 
-    const ONE_TIME = [
-      "Add Birthday",
-      "Add Address",
-      "Change Picture",
-      "Gender",
-      "Change Template",
-    ];
+    const ONE_TIME = actions
+      .filter(
+        (a) =>
+          a.type === "one-time" && !["Connect", "Language"].includes(a.name)
+      )
+      .map((a) => a.name);
 
-    const REPEATABLE = [
-      "SearchWords",
-      "Search Domains Engines",
-      "Search Google Maps",
-      "Reply",
-      "Forward",
-      "Send message",
-      "Mark Unread",
-      "Open Unread",
-      "NewsLetters With Tracking",
-    ];
+    const REPEATABLE = actions
+      .filter((a) => a.type === "repeatable" && !a.dependsOn)
+      .map((a) => a.name);
+
+    const DEPENDENCIES = actions.filter((a) => a.dependsOn);
 
     /* ================= HELPERS ================= */
 
     const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 
     const invalidPair = (a, b) =>
+      !a ||
+      !b ||
       a === b ||
       (a === "Mark Unread" && b === "Open Unread") ||
       (a === "Open Unread" && b === "Mark Unread");
@@ -1953,57 +2003,94 @@ export default function App() {
     /* ================= MAIN ================= */
 
     sessions.forEach((session) => {
-      const sequence = ["Connect", "Language"];
+      const plan = Array(TOTAL_DAYS).fill(null);
 
-      const oneTime = shuffle(ONE_TIME);
-      const repeatable = shuffle(REPEATABLE);
+      /* ===== FIXED DAYS ===== */
+      plan[0] = "Connect";
+      plan[1] = "Language";
 
-      let otIndex = 0;
-      let rIndex = 0;
-      const cycle = [];
+      /* ===== NEWSLETTER (LIMITED & SPACED) ===== */
+      DEPENDENCIES.forEach((dep) => {
+        const MAX = 3;
+        let count = 0;
 
-      /* ===== BUILD A VALID CYCLE ===== */
-      while (otIndex < oneTime.length || rIndex < repeatable.length) {
-        const prev = cycle[cycle.length - 1];
+        const days = shuffle(
+          [...Array(TOTAL_DAYS - dep.delay - 1).keys()].map((i) => i + 2)
+        );
 
-        // prefer repeatable, inject one-time evenly
-        let candidate =
-          rIndex < repeatable.length
-            ? repeatable[rIndex++]
-            : oneTime[otIndex++];
+        for (const d of days) {
+          if (count >= MAX) break;
 
-        // inject one-time every 2 repeatables
-        if (cycle.length % 2 === 1 && otIndex < oneTime.length) {
-          candidate = oneTime[otIndex++];
+          if (
+            plan[d] === null &&
+            plan[d + dep.delay] === null &&
+            !LOCKED_DAYS.has(d) &&
+            !LOCKED_DAYS.has(d + dep.delay)
+          ) {
+            plan[d] = dep.dependsOn;
+            plan[d + dep.delay] = dep.name;
+            count++;
+          }
         }
+      });
 
-        // adjacency safety
-        if (prev && invalidPair(prev, candidate)) continue;
+      /* ===== BUILD MIXED POOL ===== */
+      const mixedPool = shuffle([
+        ...ONE_TIME, // once
+        ...REPEATABLE,
+        ...REPEATABLE,
+        ...shuffle(REPEATABLE), // allow more repeats
+      ]);
 
-        cycle.push(candidate);
+      const usedOneTime = new Set();
 
-        // tracking → confirmation (+2)
-        if (candidate === "NewsLetters With Tracking") {
-          cycle.push("Confirmation Newsletters");
+      /* ===== FILL REMAINING DAYS ===== */
+      let p = 0;
+      for (let i = 0; i < TOTAL_DAYS; i++) {
+        if (LOCKED_DAYS.has(i) || plan[i] !== null) continue;
+
+        let candidate;
+        let safety = 0;
+
+        do {
+          candidate = mixedPool[p % mixedPool.length];
+          p++;
+          safety++;
+
+          // prevent repeating one-time actions
+          if (ONE_TIME.includes(candidate) && usedOneTime.has(candidate)) {
+            candidate = null;
+          }
+        } while (
+          safety < 30 &&
+          (!candidate || invalidPair(plan[i - 1], candidate))
+        );
+
+        plan[i] = candidate;
+        if (ONE_TIME.includes(candidate)) {
+          usedOneTime.add(candidate);
         }
       }
 
-      /* ===== LOOP CYCLE ===== */
-      let i = 0;
-      while (sequence.length < TOTAL_DAYS) {
-        const next = cycle[i % cycle.length];
-        const prev = sequence[sequence.length - 1];
+      /* ===== FINAL GUARANTEE (NO MISSING ONE-TIME) ===== */
+      ONE_TIME.forEach((action) => {
+        if (!plan.includes(action)) {
+          const idx = plan.findIndex(
+            (a, i) =>
+              a &&
+              !LOCKED_DAYS.has(i) &&
+              !ONE_TIME.includes(a) &&
+              !invalidPair(plan[i - 1], action)
+          );
 
-        if (!invalidPair(prev, next)) {
-          sequence.push(next);
+          if (idx !== -1) {
+            plan[idx] = action;
+          }
         }
-        i++;
-      }
-
-      sequence.length = TOTAL_DAYS;
+      });
 
       /* ===== OUTPUT ===== */
-      sequence.forEach((action, index) => {
+      plan.forEach((action, index) => {
         rows.push({
           day: index + 1,
           session,
@@ -2049,7 +2136,7 @@ export default function App() {
             1. Paste sessions list (one session per line):
           </label>
           <textarea
-            placeholder="SessionName1\nSessionName2\n..."
+            placeholder="SessionName1..."
             ref={sessionCtrl.ref}
             className="input-area"
             rows={6}
@@ -2261,6 +2348,7 @@ export default function App() {
       )}
     </>
   );
+
   // ===============================================
   // 3. Partitioner State & Functions - XLSX EXPORTS
   // ===============================================
@@ -2494,7 +2582,7 @@ export default function App() {
             rows={8}
             value={partitionCtrl.value}
             onChange={partitionCtrl.onChange}
-            placeholder="Example: ID;Tag;IP:Port;Status"
+            placeholder=""
           />
 
           {/* Unified action row: Choose File + File Name + Partition + Clear */}
@@ -2518,7 +2606,7 @@ export default function App() {
                 ref={commonFileInputRef}
                 className="hidden-file-input"
               />
-              <button
+              {/*<button
                 className="btn file-select-btn"
                 onClick={() => commonFileInputRef.current?.click()}
               >
@@ -2526,34 +2614,33 @@ export default function App() {
               </button>
               <span className="file-name-display muted">
                 {selectedFileName || "No file chosen"}
-              </span>
+              </span>*/}
+              <button
+                className="btn primary"
+                onClick={handlePartition}
+                disabled={!partitionerRawData.trim()}
+              >
+                Partition
+              </button>
+
+              <button
+                className="btn"
+                onClick={() => {
+                  setPartitionerRawData("");
+                  setPartitionerParts([]);
+                  setPartitionerStats(null);
+                  setSelectedFileName("");
+                  setPartitionerError("");
+                  if (commonFileInputRef.current) {
+                    commonFileInputRef.current.value = null;
+                  }
+                }}
+              >
+                Clear
+              </button>
             </div>
 
-            <div className="spacer" />
-
-            <button
-              className="btn primary"
-              onClick={handlePartition}
-              disabled={!partitionerRawData.trim()}
-            >
-              Partition
-            </button>
-
-            <button
-              className="btn"
-              onClick={() => {
-                setPartitionerRawData("");
-                setPartitionerParts([]);
-                setPartitionerStats(null);
-                setSelectedFileName("");
-                setPartitionerError("");
-                if (commonFileInputRef.current) {
-                  commonFileInputRef.current.value = null;
-                }
-              }}
-            >
-              Clear
-            </button>
+            {/* <div className="spacer" />*/}
           </div>
 
           {partitionerError && <div className="error">{partitionerError}</div>}
