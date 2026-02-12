@@ -2173,7 +2173,7 @@ export default function App() {
       {/* 🔴 WARNING */}
       <div className="planner-warning" role="alert">
         ⚠️ <strong>Warning:</strong> The planner logic is currently under review
-        and may generate incorrect or incomplete plans. Please do <u>not</u>{" "}
+        and may generate incomplete plans. Please do <u>not</u>{" "}
         rely on the results for production use for now.
       </div>
       <div className="controls planner-controls">
