@@ -2173,7 +2173,7 @@ export default function App() {
       {/* 🔴 WARNING */}
       <div className="planner-warning" role="alert">
         ⚠️ <strong>Warning:</strong> The planner logic is currently under review
-        and may generate incomplete plans. Please do <u>not</u>{" "}
+        and may generate incorrect or incomplete plans. Please do <u>not</u>{" "}
         rely on the results for production use for now.
       </div>
       <div className="controls planner-controls">
@@ -2189,64 +2189,55 @@ export default function App() {
             value={sessionCtrl.value}
             onChange={sessionCtrl.onChange}
           />
-          <div style={{ marginTop: 10 }}>
-            <label className="label">2. Select Start Date:</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "2px solid var(--color-border)",
-                fontSize: "0.9rem",
-                background: "transparent",
-                color: "var(--color-text)",
-                width: "180px",
-              }}
-            />
-          </div>
-          <div style={{ marginTop: 15 }}>
-            <label className="label">3. Custom OFF Days:</label>
-
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "10px",
-                marginTop: "8px",
-              }}
-            >
-              {DAYS.map((day) => (
-                <label
-                  key={day.value}
-                  style={{ display: "flex", alignItems: "center", gap: "5px" }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={customOffDays.includes(day.value)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setCustomOffDays((prev) => [...prev, day.value]);
-                      } else {
-                        setCustomOffDays((prev) =>
-                          prev.filter((d) => d !== day.value)
-                        );
-                      }
-                    }}
-                  />
-                  {day.label}
-                </label>
-              ))}
-            </div>
-
-            <p className="muted" style={{ fontSize: "0.85rem", marginTop: 5 }}>
-              Select any days you want to mark as OFF.
-            </p>
-          </div>
         </div>
       </div>
+      <div className="planner-settings-card">
+        <div style={{ marginTop: 10 }}>
+          <label className="label">2. Select Start Date:</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            style={{
+              padding: "8px 10px",
+              borderRadius: "8px",
+              border: "2px solid var(--color-border)",
+              fontSize: "0.9rem",
+              background: "transparent",
+              color: "var(--color-text)",
+              width: "180px",
+            }}
+          />
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <label className="label">3. Custom OFF Days:</label>
 
+          <div className="off-days-container">
+            {DAYS.map((day) => (
+              <label key={day.value}>
+                <input
+                  type="checkbox"
+                  checked={customOffDays.includes(day.value)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setCustomOffDays((prev) => [...prev, day.value]);
+                    } else {
+                      setCustomOffDays((prev) =>
+                        prev.filter((d) => d !== day.value)
+                      );
+                    }
+                  }}
+                />
+                <span className="off-day-pill">{day.label}</span>
+              </label>
+            ))}
+          </div>
+
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 8 }}>
+            Select any days you want to mark as OFF.
+          </p>
+        </div>
+      </div>
       <div
         className="row"
         style={{
