@@ -1914,6 +1914,7 @@ export default function App() {
   const [actions, setActions] = useState(initialActions);
   const [plannerError, setPlannerError] = useState("");
   const sessionCtrl = useStableInput(sessionText, setSessionText);
+  const [startDate, setStartDate] = useState("");
 
   const sessions = useMemo(
     () =>
@@ -1970,150 +1971,195 @@ export default function App() {
       return;
     }
 
+    if (!startDate) {
+      setPlannerError("Please select a start date.");
+      return;
+    }
+
     const TOTAL_DAYS = 30;
     const rows = [];
     const actionMap = Object.fromEntries(actions.map((a) => [a.name, a]));
-
-    /* ================= ACTIONS ================= */
-
-    const ONE_TIME = actions
-      .filter(
-        (a) =>
-          a.type === "one-time" && !["Connect", "Language"].includes(a.name)
-      )
-      .map((a) => a.name);
-
-    const REPEATABLE = actions
-      .filter((a) => a.type === "repeatable" && !a.dependsOn)
-      .map((a) => a.name);
-
-    const DEPENDENCIES = actions.filter((a) => a.dependsOn);
-
-    /* ================= HELPERS ================= */
+    const start = new Date(startDate);
 
     const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 
     const invalidPair = (a, b) =>
-      !a ||
-      !b ||
-      a === b ||
       (a === "Mark Unread" && b === "Open Unread") ||
       (a === "Open Unread" && b === "Mark Unread");
 
-    /* ================= MAIN ================= */
+    // 🔴 GLOBAL TRACKER
+    const usedActionsPerDay = {};
+
+    // Build global dates once
+    const dates = [];
+    for (let i = 0; i < TOTAL_DAYS; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      dates.push({
+        date: d,
+        isOff: customOffDays.includes(d.getDay()),
+      });
+    }
 
     sessions.forEach((session) => {
       const plan = Array(TOTAL_DAYS).fill(null);
 
-      /* ===== FIXED DAYS ===== */
-      plan[0] = "Connect";
-      plan[1] = "Language";
+      // ---------------------------
+      // CONNECT DAY 1
+      // ---------------------------
+      if (!dates[0].isOff) {
+        plan[0] = "Connect";
+        if (!usedActionsPerDay[0]) usedActionsPerDay[0] = new Set();
+        usedActionsPerDay[0].add("Connect");
+      }
 
-      /* ===== NEWSLETTER (LIMITED & SPACED) ===== */
-      DEPENDENCIES.forEach((dep) => {
-        const MAX = 3;
-        let count = 0;
+      // ---------------------------
+      // LANGUAGE NEXT WORKDAY
+      // ---------------------------
+      for (let i = 1; i < TOTAL_DAYS; i++) {
+        if (!dates[i].isOff) {
+          plan[i] = "Language";
+          if (!usedActionsPerDay[i]) usedActionsPerDay[i] = new Set();
+          usedActionsPerDay[i].add("Language");
+          break;
+        }
+      }
 
-        const days = shuffle(
-          [...Array(TOTAL_DAYS - dep.delay - 1).keys()].map((i) => i + 2)
-        );
+      // ---------------------------
+      // NEWSLETTER + CONFIRMATION
+      // ---------------------------
+      let newsletterIndex = -1;
 
-        for (const d of days) {
-          if (count >= MAX) break;
+      for (let i = 2; i < TOTAL_DAYS; i++) {
+        if (
+          !dates[i].isOff &&
+          !plan[i] &&
+          !usedActionsPerDay[i]?.has("NewsLetters With Tracking")
+        ) {
+          newsletterIndex = i;
+          plan[i] = "NewsLetters With Tracking";
+          if (!usedActionsPerDay[i]) usedActionsPerDay[i] = new Set();
+          usedActionsPerDay[i].add("NewsLetters With Tracking");
+          break;
+        }
+      }
 
-          if (
-            plan[d] === null &&
-            plan[d + dep.delay] === null &&
-            !LOCKED_DAYS.has(d) &&
-            !LOCKED_DAYS.has(d + dep.delay)
-          ) {
-            plan[d] = dep.dependsOn;
-            plan[d + dep.delay] = dep.name;
-            count++;
+      if (newsletterIndex !== -1) {
+        let workCount = 0;
+        for (let j = newsletterIndex + 1; j < TOTAL_DAYS; j++) {
+          if (!dates[j].isOff) {
+            workCount++;
+            if (
+              workCount === 2 &&
+              !usedActionsPerDay[j]?.has("Confirmation Newsletters")
+            ) {
+              plan[j] = "Confirmation Newsletters";
+              if (!usedActionsPerDay[j]) usedActionsPerDay[j] = new Set();
+              usedActionsPerDay[j].add("Confirmation Newsletters");
+              break;
+            }
           }
         }
-      });
+      }
 
-      /* ===== BUILD MIXED POOL ===== */
-      const mixedPool = shuffle([
-        ...ONE_TIME, // once
-        ...REPEATABLE,
-        ...REPEATABLE,
-        ...shuffle(REPEATABLE), // allow more repeats
-      ]);
+      // ---------------------------
+      // REMAINING ACTIONS
+      // ---------------------------
+      const oneTime = actions
+        .filter(
+          (a) =>
+            a.type === "one-time" && !["Connect", "Language"].includes(a.name)
+        )
+        .map((a) => a.name);
+
+      const repeatable = actions
+        .filter(
+          (a) =>
+            a.type === "repeatable" &&
+            !a.dependsOn &&
+            a.name !== "NewsLetters With Tracking" &&
+            a.name !== "Confirmation Newsletters"
+        )
+        .map((a) => a.name);
 
       const usedOneTime = new Set();
+      const pool = shuffle([...oneTime, ...repeatable, ...repeatable]);
+      let poolIndex = 0;
 
-      /* ===== FILL REMAINING DAYS ===== */
-      let p = 0;
       for (let i = 0; i < TOTAL_DAYS; i++) {
-        if (LOCKED_DAYS.has(i) || plan[i] !== null) continue;
+        if (dates[i].isOff || plan[i]) continue;
 
         let candidate;
         let safety = 0;
 
         do {
-          candidate = mixedPool[p % mixedPool.length];
-          p++;
+          candidate = pool[poolIndex % pool.length];
+          poolIndex++;
           safety++;
 
-          // prevent repeating one-time actions
-          if (ONE_TIME.includes(candidate) && usedOneTime.has(candidate)) {
+          if (oneTime.includes(candidate) && usedOneTime.has(candidate)) {
             candidate = null;
           }
         } while (
-          safety < 30 &&
-          (!candidate || invalidPair(plan[i - 1], candidate))
+          safety < 50 &&
+          (!candidate ||
+            plan[i - 1] === candidate ||
+            invalidPair(plan[i - 1], candidate) ||
+            usedActionsPerDay[i]?.has(candidate)) // 🔴 prevent same action same day
         );
 
+        if (!candidate) continue;
+
         plan[i] = candidate;
-        if (ONE_TIME.includes(candidate)) {
+
+        if (!usedActionsPerDay[i]) usedActionsPerDay[i] = new Set();
+        usedActionsPerDay[i].add(candidate);
+
+        if (oneTime.includes(candidate)) {
           usedOneTime.add(candidate);
         }
       }
 
-      /* ===== FINAL GUARANTEE (NO MISSING ONE-TIME) ===== */
-      ONE_TIME.forEach((action) => {
-        if (!plan.includes(action)) {
-          const idx = plan.findIndex(
-            (a, i) =>
-              a &&
-              !LOCKED_DAYS.has(i) &&
-              !ONE_TIME.includes(a) &&
-              !invalidPair(plan[i - 1], action)
-          );
-
-          if (idx !== -1) {
-            plan[idx] = action;
-          }
-        }
-      });
-
-      /* ===== OUTPUT ===== */
-      plan.forEach((action, index) => {
+      // ---------------------------
+      // BUILD OUTPUT
+      // ---------------------------
+      plan.forEach((action, i) => {
         rows.push({
-          day: index + 1,
+          day: i + 1,
+          date: dates[i].date.toISOString().split("T")[0],
           session,
-          action,
-          type: actionMap[action]?.type || "repeatable",
-          color: actionMap[action]?.color || "#999",
+          action: dates[i].isOff ? "OFF" : action,
+          type: dates[i].isOff ? "-" : actionMap[action]?.type || "repeatable",
+          color: dates[i].isOff
+            ? "#e0367d"
+            : actionMap[action]?.color || "#999",
         });
       });
     });
 
     setPlan(rows);
   };
-
   const exportPlanXLSX = (data, filename) => {
     const rows = data.map((r) => ({
       Day: r.day,
+      Date: r.date,
       Session: r.session,
       Action: r.action,
       Type: r.type,
     }));
+
     exportToXLSX(rows, filename);
   };
-
+  const [customOffDays, setCustomOffDays] = useState([]);
+  const DAYS = [
+    { label: "Sunday", value: 0 },
+    { label: "Monday", value: 1 },
+    { label: "Tuesday", value: 2 },
+    { label: "Wednesday", value: 3 },
+    { label: "Thursday", value: 4 },
+    { label: "Friday", value: 5 },
+    { label: "Saturday", value: 6 },
+  ];
   const PlannerInterface = () => (
     <>
       <div className="tab-header">
@@ -2128,7 +2174,7 @@ export default function App() {
       <div className="planner-warning" role="alert">
         ⚠️ <strong>Warning:</strong> The planner logic is currently under review
         and may generate incorrect or incomplete plans. Please do <u>not</u>{" "}
-        rely on the results for production use.
+        rely on the results for production use for now.
       </div>
       <div className="controls planner-controls">
         <div className="control-col" style={{ flex: 1 }}>
@@ -2143,6 +2189,61 @@ export default function App() {
             value={sessionCtrl.value}
             onChange={sessionCtrl.onChange}
           />
+          <div style={{ marginTop: 10 }}>
+            <label className="label">2. Select Start Date:</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: "8px",
+                border: "2px solid var(--color-border)",
+                fontSize: "0.9rem",
+                background: "transparent",
+                color: "var(--color-text)",
+                width: "180px",
+              }}
+            />
+          </div>
+          <div style={{ marginTop: 15 }}>
+            <label className="label">3. Custom OFF Days:</label>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "10px",
+                marginTop: "8px",
+              }}
+            >
+              {DAYS.map((day) => (
+                <label
+                  key={day.value}
+                  style={{ display: "flex", alignItems: "center", gap: "5px" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={customOffDays.includes(day.value)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setCustomOffDays((prev) => [...prev, day.value]);
+                      } else {
+                        setCustomOffDays((prev) =>
+                          prev.filter((d) => d !== day.value)
+                        );
+                      }
+                    }}
+                  />
+                  {day.label}
+                </label>
+              ))}
+            </div>
+
+            <p className="muted" style={{ fontSize: "0.85rem", marginTop: 5 }}>
+              Select any days you want to mark as OFF.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -2317,6 +2418,7 @@ export default function App() {
               <thead>
                 <tr>
                   <th>DAY</th>
+                  <th>DATE</th>
                   <th>SESSION</th>
                   <th>ACTION</th>
                   <th>TYPE</th>
@@ -2326,13 +2428,14 @@ export default function App() {
                 {plan.map((row, index) => (
                   <tr key={index}>
                     <td className="day-col">{row.day}</td>
+                    <td>{row.date}</td>
                     <td>{row.session}</td>
                     <td>
                       <span
                         className="action-pill"
                         style={{
                           backgroundColor: row.color,
-                          opacity: row.type === "repeatable" ? 0.7 : 1,
+                          opacity: row.action === "OFF" ? 0.5 : 1,
                         }}
                       >
                         {row.action}
