@@ -891,3 +891,139 @@ tbody td {
 .planner-warning strong {
   font-weight: 800;
 }
+/* ============================= */
+/* Planner Settings Card Style  */
+/* ============================= */
+
+.planner-settings-card {
+  background: var(--color-bg-secondary);
+  padding: 20px 24px;
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--color-border);
+  max-width: 600px;
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+/* Section Titles */
+.planner-settings-card .label {
+  font-weight: 700;
+  font-size: 1 rem;
+  margin-bottom: 6px;
+  display: block;
+}
+
+/* Date Input */
+.planner-settings-card input[type="date"] {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.planner-settings-card input[type="date"]:focus {
+  outline: none;
+  border-color: #a53cda;
+  box-shadow: 0 0 0 3px #a53cda;
+}
+
+/* OFF Day Toggle Container */
+.off-days-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* Hide default checkbox */
+.off-days-container input[type="checkbox"] {
+  display: none;
+}
+
+/* Custom Toggle Pill */
+.off-day-pill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+/* Active state */
+.off-days-container input[type="checkbox"]:checked + .off-day-pill {
+  background: #a53cda;
+  color: rgb(240, 235, 235);
+  border-color: var(--color-primary);
+  box-shadow: 0 5px 10px rgba(110, 12, 119, 0.25);
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+/* Hover */
+.off-day-pill:hover {
+  transform: translateY(-2px);
+}
+/* ============================= */
+/* DARK MODE VARIABLES */
+/* ============================= */
+
+body[data-theme="dark"] {
+  --color-bg: #0f172a;
+  --color-bg-secondary: linear-gradient(145deg, #0f1c33, #0b2a3a);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-text: #e2e8f0;
+  --color-muted: #94a3b8;
+  --color-primary: #a53cda;
+}
+/* ============================= */
+/* Planner Card - Dark Mode */
+/* ============================= */
+
+body[data-theme="dark"] .planner-settings-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+body[data-theme="dark"] .planner-settings-card input[type="date"] {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--color-text);
+  box-shadow: 0 0 0 3px rgba(195, 34, 231, 0.3);
+}
+
+body[data-theme="dark"] .planner-settings-card input[type="date"]:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+/* ============================= */
+/* OFF Pills - Dark Mode */
+/* ============================= */
+
+body[data-theme="dark"] .off-day-pill {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--color-text);
+}
+
+body[data-theme="dark"]
+  .off-days-container
+  input[type="checkbox"]:checked
+  + .off-day-pill {
+  background: linear-gradient(135deg, #a53cda, #a53cda);
+  border: none;
+  color: white;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+}
+
+body[data-theme="dark"] .off-day-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+}
