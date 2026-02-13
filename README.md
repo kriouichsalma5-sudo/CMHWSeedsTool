@@ -1,2 +1,0 @@
-# WSeedsTool
-Created with CodeSandbox
