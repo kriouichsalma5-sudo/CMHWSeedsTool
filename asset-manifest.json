@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/CMHWSeedsTool/static/css/main.0b2b1d93.css",
+    "main.js": "/CMHWSeedsTool/static/js/main.882141c5.js",
+    "index.html": "/CMHWSeedsTool/index.html",
+    "main.0b2b1d93.css.map": "/CMHWSeedsTool/static/css/main.0b2b1d93.css.map",
+    "main.882141c5.js.map": "/CMHWSeedsTool/static/js/main.882141c5.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.0b2b1d93.css",
+    "static/js/main.882141c5.js"
+  ]
+}
