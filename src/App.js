@@ -1851,7 +1851,7 @@ export default function App() {
           }`}
           onClick={() => setSelectedLogSubTab("newsletter")}
         >
-          Newsletter Log Analyzer
+          Newsletter Log Analyzerrrrrrrrrrrrr
         </button>
 
         <button
