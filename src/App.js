@@ -225,7 +225,39 @@ export default function App() {
   const [chartData, setChartData] = useState([]);
   const [analyzerError, setAnalyzerError] = useState("");
   const analyzerCtrl = useStableInput(analyzerInput, setAnalyzerInput);
+  const [newsletterRange, setNewsletterRange] = useState("");
+  const newsletterRangeCtrl = useStableInput(
+    newsletterRange,
+    setNewsletterRange
+  );
+  const parseNewsletterRanges = (input) => {
+    const rangeParts = input
+      .split("+")
+      .map((p) => p.trim())
+      .filter(Boolean);
 
+    const allProfiles = new Set();
+
+    for (const part of rangeParts) {
+      const match = part.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+      if (!match) {
+        throw new Error(`Invalid range format: "${part}". Use: start-end`);
+      }
+
+      const start = parseInt(match[1], 10);
+      const end = parseInt(match[2], 10);
+
+      if (start > end) {
+        throw new Error(`Start > end in range: ${part}`);
+      }
+
+      for (let p = start; p <= end; p++) {
+        allProfiles.add(String(p)); // keep as string because newsletter profiles are string
+      }
+    }
+
+    return new Set(allProfiles);
+  };
   const cleanLines = (text) =>
     text
       .split(/\r?\n/)
@@ -331,6 +363,16 @@ export default function App() {
     }
 
     const result = {}; // { url: [profiles] }
+    let targetProfiles = null;
+
+    if (newsletterRange.trim()) {
+      try {
+        targetProfiles = parseNewsletterRanges(newsletterRange);
+      } catch (err) {
+        setAnalyzerError(err.message);
+        return;
+      }
+    }
 
     let i = 0;
     while (i < lines.length) {
@@ -340,8 +382,10 @@ export default function App() {
       const oldMatch = extractFromOldFormat(currentLine);
       if (oldMatch) {
         const { profile, url } = oldMatch;
-        if (!result[url]) result[url] = [];
-        if (!result[url].includes(profile)) result[url].push(profile);
+        if (!targetProfiles || targetProfiles.has(profile)) {
+          if (!result[url]) result[url] = [];
+          if (!result[url].includes(profile)) result[url].push(profile);
+        }
         i++;
         continue;
       }
@@ -350,6 +394,7 @@ export default function App() {
       const newMatch = extractFromNewFormat(lines, i);
       if (newMatch.extracted.length > 0) {
         newMatch.extracted.forEach(({ profile, url }) => {
+          if (targetProfiles && !targetProfiles.has(profile)) return;
           if (!result[url]) result[url] = [];
           if (!result[url].includes(profile)) result[url].push(profile);
         });
@@ -463,6 +508,30 @@ export default function App() {
               Choose File (txt)
             </button>
             <div className="spacer" />*/}
+            <div style={{ marginTop: 15 }}>
+              <label className="label">Profile Range(s):</label>
+              <input
+                ref={newsletterRangeCtrl.ref}
+                className="small-input"
+                value={newsletterRangeCtrl.value}
+                onChange={newsletterRangeCtrl.onChange}
+                placeholder="1-800 + 2701-3120"
+                style={{
+                  width: "280px",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "2px solid var(--color-border)",
+                  backgroundColor: "transparent",
+                  color: "var(--color-text)",
+                }}
+              />
+              <p
+                className="muted"
+                style={{ fontSize: "0.85rem", marginTop: 5 }}
+              >
+                Use + to add multiple ranges → <code>1-800 + 2701-3120</code>
+              </p>
+            </div>
             <button
               className="btn primary"
               onClick={processLogs}
@@ -2576,34 +2645,105 @@ export default function App() {
 
   // XLSX Export for single part
   const parseLineSmart = (line) => {
-    const numericIdMatch = line.match(/^\d+/);
-    const tagMatch = line.match(/\[([^\]]+)\]/);
+    if (!line) return {};
+
+    let ID = "";
+    let Tag = "";
+    let IP_Port = "";
+    let Status = "";
+    let BlockType = "";
+    let Date = "";
+
+    // Detect IP
     const ipMatch = line.match(
       /(?:(?:25[0-5]|2[0-4]\d|1?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|1?\d{1,2})(?::\d+)?/
     );
-    const dateMatches = line.match(/\d{2}-[a-zA-Z]+/g);
+    if (ipMatch) IP_Port = ipMatch[0];
 
-    const status = line
-      .replace(numericIdMatch?.[0] || "", "")
+    // Detect Tag [XXXX]
+    const tagMatch = line.match(/\[([^\]]+)\]/);
+    if (tagMatch) Tag = tagMatch[1];
+
+    // Remove tag + IP for clean parsing
+    let cleaned = line
       .replace(tagMatch?.[0] || "", "")
-      .replace(ipMatch?.[0] || "", "")
-      .replace(dateMatches?.join(" ") || "", "")
+      .replace(IP_Port || "", "")
       .trim();
 
+    // Case 1: CSV format 12001,176.121.2.136
+    const csvMatch = line.match(/^(\d+),/);
+    if (csvMatch) {
+      ID = csvMatch[1];
+    }
+
+    // Case 2: numeric profile in structured lines
+    if (!ID) {
+      const numberMatch = cleaned.match(/\b(\d{4,})\b/);
+      if (numberMatch) ID = numberMatch[1];
+    }
+
+    // Extract Date if exists (example 12-Jan)
+    const dateMatch = line.match(/\d{2}-[a-zA-Z]+/g);
+    if (dateMatch) Date = dateMatch.join(" ");
+
+    // Detect Status (remaining text after removing known parts)
+    Status = cleaned.replace(ID, "").replace(Date, "").trim();
+
+    if (Status.includes("Captcha")) BlockType = "Captcha";
+    else if (Status.includes("Unusual")) BlockType = "Unusual Activity";
+
     return {
-      ID: numericIdMatch ? numericIdMatch[0] : "",
-      Tag: tagMatch ? tagMatch[1] : "",
-      IP_Port: ipMatch ? ipMatch[0] : "",
-      Status: status,
-      BlockType: status.includes("Captcha")
-        ? "Captcha"
-        : status.includes("Unusual")
-        ? "Unusual Activity"
-        : "",
-      Date: dateMatches ? dateMatches.join(" ") : "",
+      ID,
+      Tag,
+      IP_Port,
+      Status,
+      BlockType,
+      Date,
     };
   };
+  // ===== Smart Profile Detection =====
+  const extractProfile = (line) => {
+    if (!line) return "";
 
+    // Case 1: 12001,176.121.2.136
+    const commaMatch = line.match(/^(\d+),/);
+    if (commaMatch) return commaMatch[1];
+
+    // Remove bracket tag first [ABCDEF]
+    const cleaned = line.replace(/\[[^\]]+\]/g, "");
+
+    // Detect numeric profile (4+ digits to avoid IP parts)
+    const numberMatch = cleaned.match(/\b(\d{4,})\b/);
+    if (numberMatch) return numberMatch[1];
+
+    return "";
+  };
+  const handleCopyProfiles = (index) => {
+    const list = partitionerParts[index] || [];
+    if (!list.length) return;
+
+    const profiles = [...new Set(list.map(extractProfile).filter(Boolean))];
+
+    navigator.clipboard?.writeText(profiles.join("\n"));
+  };
+  const exportAllProfiles = () => {
+    if (!partitionerParts.length) return;
+
+    const allProfiles = partitionerParts.flatMap((part) => [
+      ...new Set(part.map(extractProfile).filter(Boolean)),
+    ]);
+
+    const content = allProfiles.join("\n");
+
+    const blob = new Blob([content], {
+      type: "text/plain;charset=utf-8;",
+    });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "all-profiles-by-parts.txt";
+    link.click();
+  };
   const exportPartAsXLSX = (index) => {
     const list = partitionerParts[index] || [];
     if (!list.length) return;
@@ -2626,18 +2766,38 @@ export default function App() {
         const prefix = `P${partIndex + 1}_`;
         const parsed = part[i] ? parseLineSmart(part[i]) : {};
 
-        Object.entries(parsed).forEach(([k, v]) => {
-          row[`${prefix}${k}`] = v || "";
-        });
+        row[`${prefix}ID`] = parsed.ID || "";
+        row[`${prefix}Tag`] = parsed.Tag || "";
+        row[`${prefix}IP_Port`] = parsed.IP_Port || "";
+        row[`${prefix}Status`] = parsed.Status || "";
+        row[`${prefix}BlockType`] = parsed.BlockType || "";
+        row[`${prefix}Date`] = parsed.Date || "";
 
-        // separator column (optional)
-        row[`__SEP_${partIndex}`] = "";
+        // 🔥 Add empty separator column after each part except last
+        if (partIndex !== partitionerParts.length - 1) {
+          row[`__SEP_${partIndex}`] = "";
+        }
       });
 
       rows.push(row);
     }
 
-    exportToXLSX(rows, "all-parts-side-by-side.xlsx");
+    // 🔥 Remove completely empty data columns (but keep separators)
+    const allKeys = Object.keys(rows[0] || {});
+    const nonEmptyKeys = allKeys.filter((key) => {
+      if (key.startsWith("__SEP_")) return true; // always keep separator
+      return rows.some((row) => row[key] && row[key].toString().trim() !== "");
+    });
+
+    const cleanedRows = rows.map((row) => {
+      const newRow = {};
+      nonEmptyKeys.forEach((key) => {
+        newRow[key] = row[key];
+      });
+      return newRow;
+    });
+
+    exportToXLSX(cleanedRows, "all-parts-structured.xlsx");
   };
 
   // TXT exports remain the same
@@ -2773,6 +2933,9 @@ export default function App() {
                 >
                   Export All (XLSX)
                 </button>
+                <button className="btn small" onClick={exportAllProfiles}>
+                  Export All Profiles
+                </button>
               </div>
             </div>
           ) : (
@@ -2803,6 +2966,12 @@ export default function App() {
                   onClick={() => handleCopyPart(idx)}
                 >
                   Copy
+                </button>
+                <button
+                  className="btn small"
+                  onClick={() => handleCopyProfiles(idx)}
+                >
+                  Copy Profiles
                 </button>
                 <button
                   className="btn small"
