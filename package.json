@@ -2,6 +2,8 @@
   "name": "react",
   "version": "1.0.0",
   "description": "",
+  "private": true,
+  "homepage": "https://kriouichsalma5-sudo.github.io/CMHWSeedsTool",
   "keywords": [],
   "main": "src/index.tsx",
   "dependencies": {
