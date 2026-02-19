@@ -230,6 +230,11 @@ export default function App() {
     newsletterRange,
     setNewsletterRange
   );
+  const [newsletterDateRange, setNewsletterDateRange] = useState("");
+  const newsletterDateRangeCtrl = useStableInput(
+    newsletterDateRange,
+    setNewsletterDateRange
+  );
   const parseNewsletterRanges = (input) => {
     const rangeParts = input
       .split("+")
@@ -258,6 +263,58 @@ export default function App() {
 
     return new Set(allProfiles);
   };
+  const parseNewsletterDateRange = (input) => {
+    input = input.trim();
+
+    const parseDate = (str) => {
+      const match = str.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (!match) {
+        throw new Error(`Invalid date format: ${str}. Use DD-MM-YYYY`);
+      }
+
+      const dd = Number(match[1]);
+      const mm = Number(match[2]);
+      const yyyy = Number(match[3]);
+
+      const date = new Date(yyyy, mm - 1, dd);
+
+      if (
+        date.getFullYear() !== yyyy ||
+        date.getMonth() !== mm - 1 ||
+        date.getDate() !== dd
+      ) {
+        throw new Error(`Invalid date: ${str}`);
+      }
+
+      return date;
+    };
+
+    // 🔹 Case 1: Single date
+    if (/^\d{2}-\d{2}-\d{4}$/.test(input)) {
+      const singleDate = parseDate(input);
+      return { start: singleDate, end: singleDate };
+    }
+
+    // 🔹 Case 2: Range
+    const rangeMatch = input.match(
+      /^(\d{2}-\d{2}-\d{4})\s*\/\s*(\d{2}-\d{2}-\d{4})$/
+    );
+
+    if (rangeMatch) {
+      const start = parseDate(rangeMatch[1]);
+      const end = parseDate(rangeMatch[2]);
+
+      if (start > end) {
+        throw new Error("Start date cannot be after end date.");
+      }
+
+      return { start, end };
+    }
+
+    throw new Error(
+      "Invalid date format. Use DD-MM-YYYY or DD-MM-YYYY/DD-MM-YYYY"
+    );
+  };
   const cleanLines = (text) =>
     text
       .split(/\r?\n/)
@@ -282,6 +339,8 @@ export default function App() {
 
     const profilePart = cleaned.substring(0, firstComma).trim();
     const messagePart = cleaned.substring(firstComma + 1).trim();
+    const dateMatch = messagePart.match(/\d{2}-\d{2}-\d{4}/);
+    const date = dateMatch ? dateMatch[0] : null;
 
     // Validate profile is a number
     if (!/^\d+$/.test(profilePart)) return null;
@@ -298,7 +357,7 @@ export default function App() {
     url = url.replace(/["',.;\)]*$/, "");
     url = url.replace(/\/+$/, ""); // remove trailing slashes
 
-    return { profile, url };
+    return { profile, url, date };
   };
 
   // Extract from NEW Webautomat format (multi-line)
@@ -364,7 +423,16 @@ export default function App() {
 
     const result = {}; // { url: [profiles] }
     let targetProfiles = null;
+    let dateFilter = null;
 
+    if (newsletterDateRange.trim()) {
+      try {
+        dateFilter = parseNewsletterDateRange(newsletterDateRange);
+      } catch (err) {
+        setAnalyzerError(err.message);
+        return;
+      }
+    }
     if (newsletterRange.trim()) {
       try {
         targetProfiles = parseNewsletterRanges(newsletterRange);
@@ -382,7 +450,22 @@ export default function App() {
       const oldMatch = extractFromOldFormat(currentLine);
       if (oldMatch) {
         const { profile, url } = oldMatch;
-        if (!targetProfiles || targetProfiles.has(profile)) {
+        const profileOk = !targetProfiles || targetProfiles.has(profile);
+
+        let dateOk = true;
+
+        if (dateFilter) {
+          if (!oldMatch.date) {
+            dateOk = false;
+          } else {
+            const [dd, mm, yyyy] = oldMatch.date.split("-").map(Number);
+            const logDate = new Date(yyyy, mm - 1, dd);
+
+            dateOk = logDate >= dateFilter.start && logDate <= dateFilter.end;
+          }
+        }
+
+        if (profileOk && dateOk) {
           if (!result[url]) result[url] = [];
           if (!result[url].includes(profile)) result[url].push(profile);
         }
@@ -395,6 +478,10 @@ export default function App() {
       if (newMatch.extracted.length > 0) {
         newMatch.extracted.forEach(({ profile, url }) => {
           if (targetProfiles && !targetProfiles.has(profile)) return;
+
+          // If date filter is active, skip new format (no date info)
+          if (dateFilter) return;
+
           if (!result[url]) result[url] = [];
           if (!result[url].includes(profile)) result[url].push(profile);
         });
@@ -515,7 +602,7 @@ export default function App() {
                 className="small-input"
                 value={newsletterRangeCtrl.value}
                 onChange={newsletterRangeCtrl.onChange}
-                placeholder="1-800 + 2701-3120"
+                placeholder=""
                 style={{
                   width: "280px",
                   padding: "8px 12px",
@@ -531,26 +618,55 @@ export default function App() {
               >
                 Use + to add multiple ranges → <code>1-800 + 2701-3120</code>
               </p>
+              <div style={{ marginTop: 15 }}>
+                <label className="label">Date Range:</label>
+                <input
+                  ref={newsletterDateRangeCtrl.ref}
+                  className="small-input"
+                  value={newsletterDateRangeCtrl.value}
+                  onChange={newsletterDateRangeCtrl.onChange}
+                  placeholder=""
+                  style={{
+                    width: "280px",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    border: "2px solid var(--color-border)",
+                    backgroundColor: "transparent",
+                    color: "var(--color-text)",
+                  }}
+                />
+                <p
+                  className="muted"
+                  style={{ fontSize: "0.85rem", marginTop: 5 }}
+                >
+                  Format: <code>DD-MM-YYYY/DD-MM-YYYY</code>
+                </p>
+              </div>
+
+              <button
+                className="btn primary"
+                onClick={processLogs}
+                disabled={!analyzerInput.trim()}
+              >
+                Analyze Logs
+              </button>
+              <p
+                className="muted"
+                style={{ fontSize: "0.85rem", margin: 5 }}
+              ></p>
+              <button
+                className="btn"
+                onClick={() => {
+                  setAnalyzerInput("");
+                  setAnalyzerOutput({});
+                  setSortedUrls([]);
+                  setChartData([]);
+                  setAnalyzerError("");
+                }}
+              >
+                Clear
+              </button>
             </div>
-            <button
-              className="btn primary"
-              onClick={processLogs}
-              disabled={!analyzerInput.trim()}
-            >
-              Analyze Logs
-            </button>
-            <button
-              className="btn"
-              onClick={() => {
-                setAnalyzerInput("");
-                setAnalyzerOutput({});
-                setSortedUrls([]);
-                setChartData([]);
-                setAnalyzerError("");
-              }}
-            >
-              Clear
-            </button>
           </div>
           {analyzerError && <div className="error">{analyzerError}</div>}
         </div>
@@ -2678,7 +2794,16 @@ export default function App() {
 
     // Case 2: numeric profile in structured lines
     if (!ID) {
-      const numberMatch = cleaned.match(/\b(\d{4,})\b/);
+      const matches = cleaned.match(/\b\d+\b/g);
+      if (matches) {
+        const ipParts = IP_Port ? IP_Port.split(/[\.:]/) : [];
+        for (const num of matches) {
+          if (!ipParts.includes(num)) {
+            ID = num;
+            break;
+          }
+        }
+      }
       if (numberMatch) ID = numberMatch[1];
     }
 
@@ -2702,19 +2827,31 @@ export default function App() {
     };
   };
   // ===== Smart Profile Detection =====
+  // ===== Smart Profile Detection (ALL digit lengths) =====
   const extractProfile = (line) => {
     if (!line) return "";
 
-    // Case 1: 12001,176.121.2.136
+    // Case 1: CSV format → 12001,176.121.2.136
     const commaMatch = line.match(/^(\d+),/);
     if (commaMatch) return commaMatch[1];
 
     // Remove bracket tag first [ABCDEF]
     const cleaned = line.replace(/\[[^\]]+\]/g, "");
 
-    // Detect numeric profile (4+ digits to avoid IP parts)
-    const numberMatch = cleaned.match(/\b(\d{4,})\b/);
-    if (numberMatch) return numberMatch[1];
+    // Detect standalone numeric value (avoid IP segments)
+    const matches = cleaned.match(/\b\d+\b/g);
+    if (!matches) return "";
+
+    // Remove IP parts (numbers separated by dots)
+    const ipMatch = line.match(/(?:(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?/);
+    const ipNumbers = ipMatch ? ipMatch[0].split(/[\.:]/) : [];
+
+    // Return first number not part of IP
+    for (const num of matches) {
+      if (!ipNumbers.includes(num)) {
+        return num;
+      }
+    }
 
     return "";
   };
