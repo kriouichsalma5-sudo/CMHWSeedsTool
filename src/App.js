@@ -1428,8 +1428,15 @@ export default function App() {
 
       if (excludeTerms.length > 0) {
         filtered = filtered.filter((line) => {
-          const lowerLine = line.toLowerCase();
-          return !excludeTerms.some((term) => lowerLine.includes(term));
+          const parts = line.includes("\t")
+            ? line.split("\t")
+            : line.split(/\s+/);
+          // handles tabs OR multiple spaces
+
+          const status = (parts[2] || "").toLowerCase();
+          // ONLY check the status column
+
+          return !excludeTerms.some((term) => status.includes(term));
         });
 
         if (filtered.length === 0) {
