@@ -843,16 +843,45 @@ export default function App() {
   };
 
   // Parse each log line
+
   const parseCleanLogLine = (line) => {
-    const parts = line.split(",");
+    line = line.trim();
+    if (!line) return null;
+
+    // ✅ FIX: remove outer quotes
+    if (line.startsWith('"') && line.endsWith('"')) {
+      line = line.slice(1, -1);
+    }
+
+    const parts = line.split(",").map((p) => p.trim());
+
     if (parts.length < 5) return null;
-    const session = parts[0].trim();
-    const profileStr = parts[1].trim();
-    const status = parts[2].trim();
-    const email = parts[3].trim();
-    const dateTime = parts.slice(4).join(",").trim();
+
+    let session, profileStr, status, email, dateTime;
+
+    // 🟢 OLD FORMAT
+    if (parts[0].startsWith("CMH")) {
+      session = parts[0];
+      profileStr = parts[1];
+      status = parts[2];
+      email = parts[3];
+      dateTime = parts.slice(4).join(",").trim();
+    }
+
+    // 🔵 NEW FORMAT
+    else if (!isNaN(parts[0])) {
+      session = parts[2].replace(/^success\s+/i, "").trim();
+      profileStr = parts[3];
+      status = parts[4];
+      email = parts[5];
+      dateTime = parts.slice(6).join(",").trim();
+    } else {
+      return null;
+    }
+
     const profile = parseInt(profileStr, 10);
     if (isNaN(profile)) return null;
+
     return {
       session,
       profile,
@@ -860,10 +889,9 @@ export default function App() {
       normalizedStatus: normalizeStatus(status),
       email,
       dateTime,
-      fullLine: line.trim(),
+      fullLine: line,
     };
   };
-
   // Parse multiple ranges: "1-800 + 2701-3120"
   const parseProfileRanges = (input) => {
     const rangeParts = input
