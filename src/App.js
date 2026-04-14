@@ -712,6 +712,8 @@ export default function App() {
                         fontSize: "0.9rem",
                         width: "60%",
                         paddingLeft: 10,
+                        maxHeight: "300px", // limit height
+                        overflowY: "auto", // enable scroll
                       }}
                     />
                   </PieChart>
