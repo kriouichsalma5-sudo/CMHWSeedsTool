@@ -1027,3 +1027,64 @@ body[data-theme="dark"] .off-day-pill:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
 }
+.top-request-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.request-card {
+  padding: 14px;
+  border-radius: 12px;
+  background: #1e1e2f;
+  color: rgb(255, 255, 255);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  transition: 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.request-card:hover {
+  transform: translateY(-2px);
+  border-color: #7c5cff;
+}
+
+/* COLORS */
+.request-card.top {
+  background: linear-gradient(135deg, hsl(0, 100%, 65%), #9b1313);
+}
+
+.request-card.normal {
+  background: linear-gradient(135deg, #286eb5, #121314);
+}
+
+.request-id {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.request-count {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-top: 6px;
+}
+
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 0.8rem;
+  background: rgba(229, 21, 21, 0.2);
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+.part-card {
+  margin-bottom: 20px;
+}
+.request-card.top {
+  transform: scale(1.05);
+  box-shadow: 0 8px 25px rgba(103, 12, 12, 0.3);
+}
