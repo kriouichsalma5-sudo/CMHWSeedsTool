@@ -1409,7 +1409,7 @@ export default function App() {
   const [sortedDates, setSortedDates] = useState([]);
   const [bounceError, setBounceError] = useState("");
   const bounceCtrl = useStableInput(bounceInput, setBounceInput);
-
+  const [topRequestIds, setTopRequestIds] = useState([]);
   // Entity List States
   const [listInput, setListInput] = useState("");
   const [entityGroups, setEntityGroups] = useState({});
@@ -1507,16 +1507,35 @@ export default function App() {
       const tag = tagMatch ? `[${tagMatch[1]}]` : "N/A";
 
       const parts = line.split(/\s+/);
+
       const dateIndex = parts.findIndex((p) => /^\d{2}\/\d{2}\/\d{4}$/.test(p));
+
       const date = dateIndex !== -1 ? parts[dateIndex] : "Unknown";
 
-      allResults.push({ email, tag, date });
+      // 🔥 NEW: request_id = value after date
+      const requestId =
+        dateIndex !== -1 && parts[dateIndex + 1] ? parts[dateIndex + 1] : "N/A";
+
+      allResults.push({ email, tag, date, requestId });
     }
 
     if (allResults.length === 0) {
       setBounceError("No valid bounce entries found after filtering.");
       return;
     }
+    // 🔥 Compute Top Request IDs
+    const requestCount = {};
+
+    allResults.forEach((r) => {
+      const id = r.requestId || "N/A";
+      requestCount[id] = (requestCount[id] || 0) + 1;
+    });
+
+    const sortedRequestIds = Object.entries(requestCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, count]) => ({ id, count }));
+
+    setTopRequestIds(sortedRequestIds);
 
     if (dateFilter.trim()) {
       setFilteredResults(allResults);
@@ -1602,7 +1621,7 @@ export default function App() {
   const exportDateGroupTXT = (date) => {
     const group = dateGroups[date] || [];
     const txt = group
-      .map((r) => `${r.email} | ${r.tag} | ${r.date}`)
+      .map((r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`)
       .join("\n");
     downloadText(txt, `bounces_${date.replace(/\//g, "-")}.txt`);
   };
@@ -1613,22 +1632,30 @@ export default function App() {
       Email: r.email,
       Tag: r.tag,
       Date: r.date,
+      Request_ID: r.requestId,
     }));
     exportToXLSX(rows, `bounces_${date.replace(/\//g, "-")}.xlsx`);
   };
 
   const exportAllDatesXLSX = () => {
     const rows = [];
+
     sortedDates.forEach((date) => {
       dateGroups[date].forEach((r) => {
-        rows.push({ Email: r.email, Tag: r.tag, Date: r.date });
+        rows.push({
+          Email: r.email,
+          Tag: r.tag,
+          Date: r.date,
+          Request_ID: r.requestId,
+        });
       });
     });
+
     exportToXLSX(rows, "all_bounces_by_date.xlsx");
   };
   const exportResultsTXT = () => {
     const txt = filteredResults
-      .map((r) => `${r.email} | ${r.tag} | ${r.date}`)
+      .map((r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`)
       .join("\n");
     downloadText(txt, "filtered_bounces.txt");
   };
@@ -1638,7 +1665,9 @@ export default function App() {
       Email: r.email,
       Tag: r.tag,
       Date: r.date,
+      Request_ID: r.requestId,
     }));
+
     exportToXLSX(rows, "filtered_bounces.xlsx");
   };
 
@@ -1755,6 +1784,7 @@ export default function App() {
                 setDateGroups({});
                 setSortedDates([]);
                 setBounceError("");
+                setTopRequestIds([]);
               }}
             >
               Clear
@@ -1880,7 +1910,7 @@ export default function App() {
           {sortedDates.map((date) => {
             const group = dateGroups[date];
             const lines = group
-              .map((r) => `${r.email} | ${r.tag} | ${r.date}`)
+              .map((r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`)
               .join("\n");
 
             return (
@@ -1960,7 +1990,9 @@ export default function App() {
               readOnly
               rows={12}
               value={filteredResults
-                .map((r) => `${r.email} | ${r.tag} | ${r.date}`)
+                .map(
+                  (r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`
+                )
                 .join("\n")}
             />
             <div className="card-actions-3-cols">
@@ -1969,7 +2001,10 @@ export default function App() {
                 onClick={() =>
                   navigator.clipboard.writeText(
                     filteredResults
-                      .map((r) => `${r.email} | ${r.tag} | ${r.date}`)
+                      .map(
+                        (r) =>
+                          `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`
+                      )
                       .join("\n")
                   )
                 }
@@ -1986,6 +2021,55 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {topRequestIds.length > 0 && (
+        <div className="part-card">
+          <div className="part-header">
+            <strong>Top Request IDs</strong>
+          </div>
+
+          <div className="top-request-grid">
+            {topRequestIds.map((r, index) => (
+              <div
+                key={r.id}
+                className={`request-card ${index === 0 ? "top" : "normal"}`}
+              >
+                <div className="request-id">{r.id}</div>
+
+                <div className="request-count">
+                  {r.count} {r.count === 1 ? "time" : "times"}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card-actions-3-cols">
+            <button
+              className="btn small"
+              onClick={() =>
+                navigator.clipboard.writeText(
+                  topRequestIds.map((r) => `${r.id} → ${r.count}`).join("\n")
+                )
+              }
+            >
+              Copy
+            </button>
+
+            <button
+              className="btn small primary"
+              onClick={() =>
+                downloadText(
+                  topRequestIds.map((r) => `${r.id} → ${r.count}`).join("\n"),
+                  "top_request_ids.txt"
+                )
+              }
+            >
+              Export TXT
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Entity Results */}
       {sortedEntities.length > 0 && (
         <div className="parts-grid">
