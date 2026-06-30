@@ -1404,12 +1404,16 @@ export default function App() {
   const [bounceInput, setBounceInput] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [excludeWord, setExcludeWord] = useState("");
-  const [filteredResults, setFilteredResults] = useState([]);
+  const [bounceGroups, setBounceGroups] = useState({});
   const [dateGroups, setDateGroups] = useState({});
   const [sortedDates, setSortedDates] = useState([]);
   const [bounceError, setBounceError] = useState("");
   const bounceCtrl = useStableInput(bounceInput, setBounceInput);
   const [topRequestIds, setTopRequestIds] = useState([]);
+  const [hardCount, setHardCount] = useState(0);
+  const [softCount, setSoftCount] = useState(0);
+  const [temporaryCount, setTemporaryCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   // Entity List States
   const [listInput, setListInput] = useState("");
   const [entityGroups, setEntityGroups] = useState({});
@@ -1429,9 +1433,13 @@ export default function App() {
   // Process Bounce Logs
   const processBounceLogs = () => {
     setBounceError("");
-    setFilteredResults([]);
+    setBounceGroups({});
     setDateGroups({});
     setSortedDates([]);
+    setHardCount(0);
+    setSoftCount(0);
+    setTemporaryCount(0);
+    setTotalCount(0);
 
     if (!bounceInput.trim()) {
       setBounceError("Please paste or upload bounce log content.");
@@ -1480,19 +1488,24 @@ export default function App() {
 
     if (dateFilter.trim()) {
       const targetDate = dateFilter.trim();
+
       filtered = filtered.filter((line) => {
-        const parts = line.split(/\s+/);
+        const parts = line.includes("\t")
+          ? line.split("\t")
+          : line.split(/\s+/);
+
         const dateIndex = parts.findIndex((p) =>
           /^\d{2}\/\d{2}\/\d{4}$/.test(p)
         );
+
         return dateIndex !== -1 && parts[dateIndex] === targetDate;
       });
+
       if (filtered.length === 0) {
         setBounceError(`No entries found for date: ${targetDate}`);
         return;
       }
     }
-
     const seenEmails = new Set();
     const allResults = [];
 
@@ -1506,7 +1519,7 @@ export default function App() {
       const tagMatch = line.match(/\[([^\]]+)\]/);
       const tag = tagMatch ? `[${tagMatch[1]}]` : "N/A";
 
-      const parts = line.split(/\s+/);
+      const parts = line.includes("\t") ? line.split("\t") : line.split(/\s+/);
 
       const dateIndex = parts.findIndex((p) => /^\d{2}\/\d{2}\/\d{4}$/.test(p));
 
@@ -1515,19 +1528,47 @@ export default function App() {
       // 🔥 NEW: request_id = value after date
       const requestId =
         dateIndex !== -1 && parts[dateIndex + 1] ? parts[dateIndex + 1] : "N/A";
+      let type = "Unknown";
 
-      allResults.push({ email, tag, date, requestId });
+      if (parts.includes("Hard")) {
+        type = "Hard";
+      } else if (parts.includes("Soft")) {
+        type = "Soft";
+      } else if (parts.includes("Temporary")) {
+        type = "Temporary";
+      }
+      allResults.push({
+        email,
+        tag,
+        type,
+        date,
+        requestId,
+      });
     }
 
     if (allResults.length === 0) {
       setBounceError("No valid bounce entries found after filtering.");
       return;
     }
+    const hard = allResults.filter((r) => r.type === "Hard").length;
+    const soft = allResults.filter((r) => r.type === "Soft").length;
+    const temporary = allResults.filter((r) => r.type === "Temporary").length;
+
+    setHardCount(hard);
+    setSoftCount(soft);
+    setTemporaryCount(temporary);
+    setTotalCount(allResults.length);
     // 🔥 Compute Top Request IDs
     const requestCount = {};
 
     allResults.forEach((r) => {
-      const id = r.requestId || "N/A";
+      // ONLY HARD BOUNCES
+      if (r.type !== "Hard") return;
+
+      const id = r.requestId;
+
+      if (!id || id === "N/A") return;
+
       requestCount[id] = (requestCount[id] || 0) + 1;
     });
 
@@ -1537,21 +1578,36 @@ export default function App() {
 
     setTopRequestIds(sortedRequestIds);
 
-    if (dateFilter.trim()) {
-      setFilteredResults(allResults);
-    } else {
+    const groupsByType = {};
+
+    allResults.forEach((row) => {
+      if (!groupsByType[row.type]) {
+        groupsByType[row.type] = [];
+      }
+
+      groupsByType[row.type].push(row);
+    });
+
+    setBounceGroups(groupsByType);
+
+    if (!dateFilter.trim()) {
       const groups = {};
+
       allResults.forEach((item) => {
         const key = item.date;
+
         if (!groups[key]) groups[key] = [];
+
         groups[key].push(item);
       });
 
       const dates = Object.keys(groups).sort((a, b) => {
         if (a === "Unknown") return 1;
         if (b === "Unknown") return -1;
+
         const [d1, m1, y1] = a.split("/").map(Number);
         const [d2, m2, y2] = b.split("/").map(Number);
+
         return new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1);
       });
 
@@ -1621,7 +1677,9 @@ export default function App() {
   const exportDateGroupTXT = (date) => {
     const group = dateGroups[date] || [];
     const txt = group
-      .map((r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`)
+      .map(
+        (r) => `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
+      )
       .join("\n");
     downloadText(txt, `bounces_${date.replace(/\//g, "-")}.txt`);
   };
@@ -1631,6 +1689,7 @@ export default function App() {
     const rows = group.map((r) => ({
       Email: r.email,
       Tag: r.tag,
+      Type: r.type,
       Date: r.date,
       Request_ID: r.requestId,
     }));
@@ -1655,7 +1714,9 @@ export default function App() {
   };
   const exportResultsTXT = () => {
     const txt = filteredResults
-      .map((r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`)
+      .map(
+        (r) => `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
+      )
       .join("\n");
     downloadText(txt, "filtered_bounces.txt");
   };
@@ -1664,6 +1725,7 @@ export default function App() {
     const rows = filteredResults.map((r) => ({
       Email: r.email,
       Tag: r.tag,
+      Type: r.type,
       Date: r.date,
       Request_ID: r.requestId,
     }));
@@ -1682,10 +1744,11 @@ export default function App() {
   const exportEntityGroupXLSX = (entity) => {
     const group = entityGroups[entity] || [];
     const rows = group.map((r) => ({
-      email: r.email,
-      session: r.session,
-      email_order: r.emailOrder,
-      entity: r.entity,
+      Email: r.email,
+      Tag: r.tag,
+      Type: r.type,
+      Date: r.date,
+      Request_ID: r.requestId,
     }));
     exportToXLSX(rows, `${entity}_list.xlsx`);
   };
@@ -1695,10 +1758,11 @@ export default function App() {
     sortedEntities.forEach((entity) => {
       entityGroups[entity].forEach((r) => {
         rows.push({
-          email: r.email,
-          session: r.session,
-          email_order: r.emailOrder,
-          entity: r.entity,
+          Email: r.email,
+          Tag: r.tag,
+          Type: r.type,
+          Date: r.date,
+          Request_ID: r.requestId,
         });
       });
     });
@@ -1780,11 +1844,16 @@ export default function App() {
                 setBounceInput("");
                 setDateFilter("");
                 setExcludeWord("");
-                setFilteredResults([]);
+                setBounceGroups({});
                 setDateGroups({});
                 setSortedDates([]);
                 setBounceError("");
                 setTopRequestIds([]);
+
+                setHardCount(0);
+                setSoftCount(0);
+                setTemporaryCount(0);
+                setTotalCount(0);
               }}
             >
               Clear
@@ -1910,7 +1979,10 @@ export default function App() {
           {sortedDates.map((date) => {
             const group = dateGroups[date];
             const lines = group
-              .map((r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`)
+              .map(
+                (r) =>
+                  `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
+              )
               .join("\n");
 
             return (
@@ -1972,60 +2044,94 @@ export default function App() {
       )}
 
       {/* Bounce Results: Single List (filtered) */}
-      {filteredResults.length > 0 && sortedDates.length === 0 && (
-        <div className="parts-grid">
-          <div className="part-card" style={{ width: "100%" }}>
+      {Object.keys(bounceGroups).length > 0 &&
+        Object.entries(bounceGroups).map(([type, rows]) => (
+          <div
+            key={type}
+            className="part-card"
+            style={{ width: "100%", marginBottom: 25 }}
+          >
             <div className="part-header">
               <strong>
-                Bounce Results ({filteredResults.length} unique emails)
+                {type} Bounce ({rows.length} unique emails)
               </strong>
-              {dateFilter.trim() && (
-                <span style={{ marginLeft: 10, opacity: 0.8 }}>
-                  — Filtered: {dateFilter}
-                </span>
+
+              {dateFilter && (
+                <span style={{ marginLeft: 10 }}>— Filtered: {dateFilter}</span>
               )}
             </div>
+
             <textarea
               className="part-area"
+              rows={10}
               readOnly
-              rows={12}
-              value={filteredResults
+              value={rows
                 .map(
-                  (r) => `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`
+                  (r) =>
+                    `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
                 )
                 .join("\n")}
             />
+
             <div className="card-actions-3-cols">
               <button
                 className="btn small"
                 onClick={() =>
                   navigator.clipboard.writeText(
-                    filteredResults
+                    rows
                       .map(
                         (r) =>
-                          `${r.email} | ${r.tag} | ${r.date} | ${r.requestId}`
+                          `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
                       )
                       .join("\n")
                   )
                 }
               >
-                Copy All
+                Copy
               </button>
-              <button className="btn small" onClick={exportResultsTXT}>
+
+              <button
+                className="btn small"
+                onClick={() =>
+                  downloadText(
+                    rows
+                      .map(
+                        (r) =>
+                          `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
+                      )
+                      .join("\n"),
+                    `${type.toLowerCase()}_bounces.txt`
+                  )
+                }
+              >
                 TXT
               </button>
-              <button className="btn small primary" onClick={exportResultsXLSX}>
+
+              <button
+                className="btn small primary"
+                onClick={() =>
+                  exportToXLSX(
+                    rows.map((r) => ({
+                      Email: r.email,
+                      Tag: r.tag,
+                      Type: r.type,
+                      Date: r.date,
+                      Request_ID: r.requestId,
+                    })),
+                    `${type.toLowerCase()}_bounces.xlsx`
+                  )
+                }
+              >
                 XLSX
               </button>
             </div>
           </div>
-        </div>
-      )}
+        ))}
 
       {topRequestIds.length > 0 && (
         <div className="part-card">
           <div className="part-header">
-            <strong>Top Request IDs</strong>
+            <strong>Top Hard Request IDs</strong>
           </div>
 
           <div className="top-request-grid">
