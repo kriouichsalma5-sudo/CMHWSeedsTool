@@ -28,7 +28,7 @@ const ANALYZER_COLORS = [
   "#e67e22",
   "#34495e",
 ];
-
+import * as XLSX from "xlsx";
 const ipv4Regex =
   /(?:(?:25[0-5]|2[0-4]\d|1?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|1?\d{1,2})/;
 
@@ -1412,15 +1412,22 @@ export default function App() {
   const [topRequestIds, setTopRequestIds] = useState([]);
   const [hardCount, setHardCount] = useState(0);
   const [softCount, setSoftCount] = useState(0);
-  const [temporaryCount, setTemporaryCount] = useState(0);
+
   const [totalCount, setTotalCount] = useState(0);
   // Entity List States
   const [listInput, setListInput] = useState("");
-  const [entityGroups, setEntityGroups] = useState({});
-  const [sortedEntities, setSortedEntities] = useState([]);
+
+  const [compareResults, setCompareResults] = useState([]);
   const [listError, setListError] = useState("");
   const listCtrl = useStableInput(listInput, setListInput);
+  // Webautomat Bounce
+  const webautoFileInputRef = useRef(null);
 
+  const [webautoInput, setWebautoInput] = useState("");
+  const [webautoData, setWebautoData] = useState([]);
+  const [webautoError, setWebautoError] = useState("");
+
+  const webautoCtrl = useStableInput(webautoInput, setWebautoInput);
   // Stabilized handlers
   const dateFilterCtrl = useStableInput(dateFilter, setDateFilter);
   const excludeCtrl = useStableInput(excludeWord, setExcludeWord);
@@ -1438,7 +1445,6 @@ export default function App() {
     setSortedDates([]);
     setHardCount(0);
     setSoftCount(0);
-    setTemporaryCount(0);
     setTotalCount(0);
 
     if (!bounceInput.trim()) {
@@ -1528,15 +1534,17 @@ export default function App() {
       // 🔥 NEW: request_id = value after date
       const requestId =
         dateIndex !== -1 && parts[dateIndex + 1] ? parts[dateIndex + 1] : "N/A";
-      let type = "Unknown";
+      let type = null;
 
       if (parts.includes("Hard")) {
         type = "Hard";
       } else if (parts.includes("Soft")) {
         type = "Soft";
-      } else if (parts.includes("Temporary")) {
-        type = "Temporary";
       }
+
+      // Ignore every other bounce type
+      if (!type) continue;
+
       allResults.push({
         email,
         tag,
@@ -1552,11 +1560,10 @@ export default function App() {
     }
     const hard = allResults.filter((r) => r.type === "Hard").length;
     const soft = allResults.filter((r) => r.type === "Soft").length;
-    const temporary = allResults.filter((r) => r.type === "Temporary").length;
 
     setHardCount(hard);
     setSoftCount(soft);
-    setTemporaryCount(temporary);
+
     setTotalCount(allResults.length);
     // 🔥 Compute Top Request IDs
     const requestCount = {};
@@ -1572,11 +1579,20 @@ export default function App() {
       requestCount[id] = (requestCount[id] || 0) + 1;
     });
 
-    const sortedRequestIds = Object.entries(requestCount)
-      .sort((a, b) => b[1] - a[1])
-      .map(([id, count]) => ({ id, count }));
+    const sortedRequestIds = Object.entries(requestCount).sort(
+      (a, b) => b[1] - a[1]
+    );
 
-    setTopRequestIds(sortedRequestIds);
+    if (sortedRequestIds.length) {
+      setTopRequestIds([
+        {
+          id: sortedRequestIds[0][0],
+          count: sortedRequestIds[0][1],
+        },
+      ]);
+    } else {
+      setTopRequestIds([]);
+    }
 
     const groupsByType = {};
 
@@ -1617,62 +1633,50 @@ export default function App() {
   };
 
   // FIXED: Process Entity List - now working correctly
-  const processEntityList = () => {
+  const processCompareList = () => {
     setListError("");
-    setEntityGroups({});
-    setSortedEntities([]);
+    setCompareResults([]);
 
     if (!listInput.trim()) {
-      setListError("Please paste the entity list.");
+      setListError("Please paste the email list.");
       return;
     }
 
-    const lines = listInput
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) {
-      setListError("No valid lines found.");
-      return;
-    }
+    const pastedEmails = new Set();
 
-    const groups = {};
-    let validCount = 0;
-
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 4) continue;
-
-      const email = parts[0];
-      // Skip session_id (parts[1])
-      const session = parts[2];
-      const emailOrder = parts[3];
-
-      const entity = session.split("_")[0];
-      if (!/^CMH\d+$/.test(entity)) continue;
-
-      const row = { email, session, emailOrder, entity };
-
-      if (!groups[entity]) groups[entity] = [];
-      groups[entity].push(row);
-      validCount++;
-    }
-
-    if (validCount === 0) {
-      setListError(
-        "No valid entries found. Expected format: email session_id session email_order"
+    listInput.split(/\r?\n/).forEach((line) => {
+      const match = line.match(
+        /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
       );
-      return;
-    }
 
-    const sorted = Object.keys(groups).sort((a, b) => {
-      return groups[b].length - groups[a].length || a.localeCompare(b);
+      if (match) {
+        pastedEmails.add(match[0].toLowerCase());
+      }
     });
 
-    setSortedEntities(sorted);
-    setEntityGroups(groups);
+    const hardList = bounceGroups["Hard"] || [];
+
+    const remaining = hardList.filter(
+      (item) => !pastedEmails.has(item.email.toLowerCase())
+    );
+
+    setCompareResults(remaining);
+  };
+  const exportHardIMacros = () => {
+    alert("Export Hard iMacros - Coming Soon");
   };
 
+  const exportSoftIMacros = () => {
+    alert("Export Soft iMacros - Coming Soon");
+  };
+
+  const exportHardWebautomat = () => {
+    alert("Export Hard Webautomat - Coming Soon");
+  };
+
+  const exportSoftWebautomat = () => {
+    alert("Export Soft Webautomat - Coming Soon");
+  };
   // Export functions
   const exportDateGroupTXT = (date) => {
     const group = dateGroups[date] || [];
@@ -1713,16 +1717,16 @@ export default function App() {
     exportToXLSX(rows, "all_bounces_by_date.xlsx");
   };
   const exportResultsTXT = () => {
-    const txt = filteredResults
+    const txt = compareResults
       .map(
         (r) => `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
       )
       .join("\n");
-    downloadText(txt, "filtered_bounces.txt");
+    downloadText(txt, "remaining_hard_bounces.txt");
   };
 
   const exportResultsXLSX = () => {
-    const rows = filteredResults.map((r) => ({
+    const rows = compareResults.map((r) => ({
       Email: r.email,
       Tag: r.tag,
       Type: r.type,
@@ -1730,43 +1734,7 @@ export default function App() {
       Request_ID: r.requestId,
     }));
 
-    exportToXLSX(rows, "filtered_bounces.xlsx");
-  };
-
-  const exportEntityGroupTXT = (entity) => {
-    const group = entityGroups[entity] || [];
-    const txt = group
-      .map((r) => `${r.email} ${r.session} ${r.emailOrder} ${r.entity}`)
-      .join("\n");
-    downloadText(txt, `${entity}_list.txt`);
-  };
-
-  const exportEntityGroupXLSX = (entity) => {
-    const group = entityGroups[entity] || [];
-    const rows = group.map((r) => ({
-      Email: r.email,
-      Tag: r.tag,
-      Type: r.type,
-      Date: r.date,
-      Request_ID: r.requestId,
-    }));
-    exportToXLSX(rows, `${entity}_list.xlsx`);
-  };
-
-  const exportAllEntitiesXLSX = () => {
-    const rows = [];
-    sortedEntities.forEach((entity) => {
-      entityGroups[entity].forEach((r) => {
-        rows.push({
-          Email: r.email,
-          Tag: r.tag,
-          Type: r.type,
-          Date: r.date,
-          Request_ID: r.requestId,
-        });
-      });
-    });
-    exportToXLSX(rows, "all_entities_combined.xlsx");
+    exportToXLSX(rows, "remaining_hard_bounces.xlsx");
   };
 
   // File handlers
@@ -1784,62 +1752,143 @@ export default function App() {
       setListError("");
     });
   };
+  const handleWebautoFileChange = (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+
+        const workbook = XLSX.read(data, {
+          type: "array",
+        });
+
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+        const rows = XLSX.utils.sheet_to_json(sheet, {
+          defval: "",
+        });
+
+        const parsed = [];
+        const lookup = new Map();
+
+        rows.forEach((row) => {
+          const item = {
+            seed_id: row.seed_id || "",
+            tag: row.tag || "",
+            profile_name: row.profile_name || "",
+            list: row.list || "",
+            entity: row.entity || "",
+            status: row.status || "",
+          };
+
+          parsed.push(item);
+
+          lookup.set(item.tag.toLowerCase(), item);
+        });
+
+        setWebautoData(parsed);
+        window.webautoLookup = lookup;
+
+        setWebautoData(parsed);
+
+        setWebautoInput(
+          parsed
+            .map(
+              (r) =>
+                `${r.seed_id} | ${r.tag} | ${r.profile_name} | ${r.list} | ${r.entity} | ${r.status}`
+            )
+            .join("\n")
+        );
+
+        setWebautoError("");
+      } catch (err) {
+        console.error(err);
+
+        setWebautoError(err.message);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
 
   // Updated HardBounceAnalyzer component
+  // Updated HardBounceAnalyzer component
   const HardBounceAnalyzer = () => (
-    <>
-      <div className="tab-header">
-        <h1>Hard Bounce Analyzer</h1>
+    <div className="analyzer-container">
+      <div className="tab-header-inline">
+        <h2>Bounce Analyzer</h2>
       </div>
-      <p className="muted">
-        <strong>1.</strong> Filter bounce logs → Email | Tag | Date
-        <br />
-        <strong>2.</strong> Parse list from search emails(EmailSession) → Group
-        by entity (CMH1, CMH2...)
-      </p>
+      <div className="stats-badge-grid">
+        <div className="badge-card card-red">
+          <span className="badge-title">Hard Bounce</span>
+          <span className="badge-value">{hardCount}</span>
+          <span className="badge-subtitle">Hard bounce emails</span>
+        </div>
+        <div className="badge-card card-orange">
+          <span className="badge-title">Soft Bounce</span>
+          <span className="badge-value">{softCount}</span>
+          <span className="badge-subtitle">Soft bounce emails</span>
+        </div>
+        <div
+          className="badge-card card-blue"
+          style={{ cursor: topRequestIds.length ? "pointer" : "default" }}
+          title={topRequestIds.length ? "Click to copy Request ID" : ""}
+          onClick={() => {
+            if (topRequestIds.length) {
+              navigator.clipboard.writeText(topRequestIds[0].id);
+            }
+          }}
+        >
+          <span className="badge-title">Top Hard Request ID 📋</span>
+          <span className="badge-value">
+            {topRequestIds.length ? topRequestIds[0].id : "-"}
+          </span>
+          <span className="badge-subtitle">
+            {topRequestIds.length
+              ? `${topRequestIds[0].count} occurrences`
+              : "No data"}
+          </span>
+        </div>
+        <div className="badge-card card-green">
+          <span className="badge-title">Remaining Hard Bounce Emails</span>
+          <span className="badge-value">{compareResults.length}</span>
+          <span className="badge-subtitle">Remaining after comparison</span>
+        </div>
+      </div>
 
-      <div className="controls-analyzer">
-        {/* Bounce Logs Section */}
-        <div className="control-col">
-          <h3 style={{ marginTop: 0, color: "var(--color-primary)" }}>
-            Bounce Logs
-          </h3>
-          <label className="label">Paste bounce logs:</label>
-          <textarea
-            ref={bounceCtrl.ref}
-            className="input-area"
-            rows={8}
-            value={bounceCtrl.value}
-            onChange={bounceCtrl.onChange}
-            placeholder="email@gmail.com [TAG] ... 30/12/2025"
-          />
+      {/* main interactive two-column dashboard grid */}
+      <div className="analyzer-main-grid">
+        {/* LEFT COLUMN: Bounce Logs */}
+        <div className="panel-card">
+          <h3 className="panel-title">Bounce Logs</h3>
 
-          <div className="row file-upload-row" style={{ marginTop: 10 }}>
-            <input
-              type="file"
-              accept=".txt,.log,.csv,.xlsx,.xls"
-              onChange={handleBounceFileChange}
-              ref={bounceFileInputRef}
-              className="hidden-file-input"
+          <div className="form-group">
+            <label className="field-label">Paste bounce logs</label>
+            <textarea
+              ref={bounceCtrl.ref}
+              className="modern-textarea"
+              rows={6}
+              value={bounceCtrl.value}
+              onChange={bounceCtrl.onChange}
+              placeholder="Paste bounce logs here..."
             />
-            {/*
-<button
-  className="btn file-select-btn"
-  onClick={() => bounceFileInputRef.current?.click()}
->
-  Choose File (txt)
-</button>
+          </div>
 
-            <div className="spacer" />*/}
+          <div className="button-cluster">
             <button
-              className="btn primary"
+              className="btn btn-purple"
               onClick={processBounceLogs}
               disabled={!bounceInput.trim()}
             >
-              Analyze Bounce Logs
+              Analyze
             </button>
             <button
-              className="btn"
+              className="btn btn-gray"
               onClick={() => {
                 setBounceInput("");
                 setDateFilter("");
@@ -1849,10 +1898,8 @@ export default function App() {
                 setSortedDates([]);
                 setBounceError("");
                 setTopRequestIds([]);
-
                 setHardCount(0);
                 setSoftCount(0);
-                setTemporaryCount(0);
                 setTotalCount(0);
               }}
             >
@@ -1860,394 +1907,288 @@ export default function App() {
             </button>
           </div>
 
-          <div
-            className="row"
-            style={{ marginTop: 15, gap: 15, flexWrap: "wrap" }}
-          >
-            <div style={{ flex: "1 1 280px", maxWidth: 320 }}>
-              <label className="label">Date Filter (optional):</label>
+          <div className="form-group inline-top-margin">
+            <label className="field-label">Date Filter (optional):</label>
+            <div className="input-with-icon">
               <input
+                type="text"
                 ref={dateFilterCtrl.ref}
-                className="small-input"
+                className="modern-input"
                 value={dateFilterCtrl.value}
                 onChange={dateFilterCtrl.onChange}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "4px solid var(--color-border)",
-                  fontSize: "0.95rem",
-                  background: "transparent",
-                  color: "var(--color-text)",
-                }}
+                placeholder="dd/mm/yyyy"
                 autoComplete="off"
               />
-            </div>
-
-            {/* NEW MULTI-LINE EXCLUDE */}
-            <div style={{ flex: "1 1 280px", maxWidth: 420 }}>
-              <label className="label">
-                Exclude Words/Phrases (one per line):
-              </label>
-              <textarea
-                ref={excludeCtrl.ref}
-                value={excludeCtrl.value}
-                onChange={excludeCtrl.onChange}
-                style={{
-                  width: "100%",
-                  height: "120px",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "4px solid var(--color-border)",
-                  fontSize: "0.95rem",
-                  background: "transparent",
-                  color: "var(--color-text)",
-                  resize: "vertical",
-                }}
-                autoComplete="off"
-              />
-              <p
-                className="muted"
-                style={{ fontSize: "0.85rem", marginTop: 5 }}
-              >
-                Lines containing any of these words/phrases will be removed
-              </p>
+              <span className="calendar-placeholder-icon">📅</span>
             </div>
           </div>
 
-          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 10 }}>
-            Leave date filter empty → results grouped by date
-          </p>
+          <div className="form-group inline-top-margin">
+            <label className="field-label">
+              Exclude Words/Phrases (one per line):
+            </label>
+            <textarea
+              ref={excludeCtrl.ref}
+              value={excludeCtrl.value}
+              onChange={excludeCtrl.onChange}
+              className="modern-textarea short-height"
+              placeholder="Enter words or phrases to exclude..."
+              autoComplete="off"
+            />
+            <span className="field-hint">
+              Lines containing any of these words/phrases will be removed
+            </span>
+          </div>
         </div>
 
-        {/* Entity List Parser */}
-        <div className="control-col">
-          <h3 style={{ marginTop: 0, color: "var(--color-primary)" }}>
-            Entity List Parser
-          </h3>
-          <label className="label">Paste list:</label>
-          <textarea
-            ref={listCtrl.ref}
-            className="input-area"
-            rows={8}
-            value={listCtrl.value}
-            onChange={listCtrl.onChange}
-            placeholder="email session_id session email_order"
-          />
+        {/* RIGHT COLUMN: iMacros Compare & Webautomat */}
+        <div className="panel-column-right">
+          {/* iMacros Panel */}
+          <div className="panel-card">
+            <h3 className="panel-title">
+              iMacros Compare
+              <space></space>{" "}
+              <span className="panel-count">
+                ({listInput.split(/\r?\n/).filter((l) => l.trim()).length}{" "}
+                emails)
+              </span>
+            </h3>
+            <div className="form-group">
+              <label className="field-label">Paste list</label>
+              <textarea
+                ref={listCtrl.ref}
+                className="modern-textarea"
+                rows={5}
+                value={listCtrl.value}
+                onChange={listCtrl.onChange}
+                placeholder="Paste list containing emails..."
+              />
+            </div>
 
-          <div className="row file-upload-row" style={{ marginTop: 10 }}>
-            <input
-              type="file"
-              accept=".txt,.csv,.xlsx,.xls"
-              onChange={handleListFileChange}
-              ref={entityFileInputRef}
-              className="hidden-file-input"
-            />
-            {/*<button
-              className="btn file-select-btn"
-              onClick={() => entityFileInputRef.current?.click()}
-            >
-              Choose File (txt)
-            </button>
-            <div className="spacer" />*/}
-            <button
-              className="btn primary"
-              onClick={processEntityList}
-              disabled={!listInput.trim()}
-            >
-              Parse by Entity
-            </button>
-            <button
-              className="btn"
-              onClick={() => {
-                setListInput("");
-                setEntityGroups({});
-                setSortedEntities([]);
-                setListError("");
-              }}
-            >
-              Clear
-            </button>
+            <div className="button-cluster">
+              <button
+                className="btn btn-purple"
+                onClick={processCompareList}
+                disabled={!listInput.trim()}
+              >
+                Compare
+              </button>
+              <button
+                className="btn btn-gray"
+                onClick={() => {
+                  setListInput("");
+                  setCompareResults([]);
+                  setListError("");
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="full-width-actions">
+              <button
+                className="btn btn-outline-purple-wide"
+                onClick={exportHardIMacros}
+              >
+                📥 Export Hard iMacros
+              </button>
+              <button
+                className="btn btn-outline-purple-wide"
+                onClick={exportSoftIMacros}
+              >
+                📥 Export Soft iMacros
+              </button>
+            </div>
           </div>
 
-          {listError && <div className="error">{listError}</div>}
+          {/* Webautomat Panel */}
+          <div className="panel-card">
+            <h3 className="panel-title">
+              Webautomat Bounce <space></space>{" "}
+              <span className="panel-count">
+                ({webautoData.length} profiles)
+              </span>
+            </h3>
+            <div className="form-group">
+              <label className="field-label">Paste or Upload</label>
+              <textarea
+                ref={webautoCtrl.ref}
+                className="modern-textarea short-height"
+                value={webautoCtrl.value}
+                onChange={webautoCtrl.onChange}
+                placeholder="Paste webautomat bounce content or upload a file..."
+              />
+            </div>
+
+            <div className="button-cluster">
+              <input
+                type="file"
+                accept=".txt,.csv,.xlsx,.xls"
+                ref={webautoFileInputRef}
+                onChange={handleWebautoFileChange}
+                style={{ display: "none" }}
+              />
+              <button
+                className="btn btn-outline-purple"
+                onClick={() => webautoFileInputRef.current?.click()}
+              >
+                📤 Choose File
+              </button>
+              <button
+                className="btn btn-gray"
+                onClick={() => {
+                  setWebautoInput("");
+                  setWebautoError("");
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="full-width-actions">
+              <button
+                className="btn btn-outline-purple-wide"
+                onClick={exportHardWebautomat}
+              >
+                📥 Export Hard Webautomat
+              </button>
+              <button
+                className="btn btn-outline-purple-wide"
+                onClick={exportSoftWebautomat}
+              >
+                📥 Export Soft Webautomat
+              </button>
+            </div>
+            {webautoError && (
+              <div className="inline-error-msg">{webautoError}</div>
+            )}
+          </div>
         </div>
       </div>
-      {/* Bounce Results: Grouped by Date */}
-      {sortedDates.length > 0 && (
-        <div className="parts-grid">
-          {sortedDates.map((date) => {
-            const group = dateGroups[date];
-            const lines = group
+
+      {/* ===== Statistics Badge Strip ===== */}
+
+      {/* ===== Results Presentation Containers ===== */}
+      <div className="results-display-stack">
+        {/* Hard Bounce Log Output Container */}
+        <div className="result-output-box">
+          <div className="output-box-header">
+            <span className="output-title text-red">
+              Hard Bounce Emails<space></space> (
+              {(bounceGroups["Hard"] || []).length})
+            </span>
+            <button
+              className="btn-inline-copy"
+              onClick={() => {
+                const lines = (bounceGroups["Hard"] || [])
+                  .map((r) => `${r.email} | ${r.tag} | ${r.type} | ${r.date}`)
+                  .join("\n");
+                navigator.clipboard.writeText(
+                  lines || "No hard bounce data yet."
+                );
+              }}
+            >
+              📋 Copy
+            </button>
+          </div>
+          <textarea
+            className="output-display-area"
+            readOnly
+            value={(bounceGroups["Hard"] || [])
               .map(
                 (r) =>
                   `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
               )
-              .join("\n");
-
-            return (
-              <div key={date} className="part-card">
-                <div className="part-header">
-                  <strong>{date === "Unknown" ? "Unknown Date" : date}</strong>
-                  <span className="part-count">({group.length} emails)</span>
-                </div>
-                <textarea
-                  className="part-area"
-                  readOnly
-                  rows={10}
-                  value={lines}
-                />
-                <div className="card-actions-3-cols">
-                  <button
-                    className="btn small"
-                    onClick={() => navigator.clipboard.writeText(lines)}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    className="btn small"
-                    onClick={() => exportDateGroupTXT(date)}
-                  >
-                    Ewport TXT
-                  </button>
-                  <button
-                    className="btn small primary"
-                    onClick={() => exportDateGroupXLSX(date)}
-                  >
-                    Export XLSX
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-
-          <div
-            className="part-card"
-            style={{ background: "var(--color-bg-secondary)" }}
-          >
-            <div className="part-header">
-              <strong>
-                All Dates Combined ({Object.values(dateGroups).flat().length}{" "}
-                total)
-              </strong>
-            </div>
-            <div
-              className="card-actions-3-cols"
-              style={{ padding: "15px", justifyContent: "center" }}
-            >
-              <button className="btn primary" onClick={exportAllDatesXLSX}>
-                Export All XLSX
-              </button>
-            </div>
-          </div>
+              .join("\n")}
+            placeholder='No hard bounce data yet. Click "Analyze" to see results.'
+          />
         </div>
-      )}
 
-      {/* Bounce Results: Single List (filtered) */}
-      {Object.keys(bounceGroups).length > 0 &&
-        Object.entries(bounceGroups).map(([type, rows]) => (
-          <div
-            key={type}
-            className="part-card"
-            style={{ width: "100%", marginBottom: 25 }}
-          >
-            <div className="part-header">
-              <strong>
-                {type} Bounce ({rows.length} unique emails)
-              </strong>
-
-              {dateFilter && (
-                <span style={{ marginLeft: 10 }}>— Filtered: {dateFilter}</span>
-              )}
-            </div>
-
-            <textarea
-              className="part-area"
-              rows={10}
-              readOnly
-              value={rows
-                .map(
-                  (r) =>
-                    `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
-                )
-                .join("\n")}
-            />
-
-            <div className="card-actions-3-cols">
-              <button
-                className="btn small"
-                onClick={() =>
-                  navigator.clipboard.writeText(
-                    rows
-                      .map(
-                        (r) =>
-                          `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
-                      )
-                      .join("\n")
-                  )
-                }
-              >
-                Copy
-              </button>
-
-              <button
-                className="btn small"
-                onClick={() =>
-                  downloadText(
-                    rows
-                      .map(
-                        (r) =>
-                          `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
-                      )
-                      .join("\n"),
-                    `${type.toLowerCase()}_bounces.txt`
-                  )
-                }
-              >
-                TXT
-              </button>
-
-              <button
-                className="btn small primary"
-                onClick={() =>
-                  exportToXLSX(
-                    rows.map((r) => ({
-                      Email: r.email,
-                      Tag: r.tag,
-                      Type: r.type,
-                      Date: r.date,
-                      Request_ID: r.requestId,
-                    })),
-                    `${type.toLowerCase()}_bounces.xlsx`
-                  )
-                }
-              >
-                XLSX
-              </button>
-            </div>
-          </div>
-        ))}
-
-      {topRequestIds.length > 0 && (
-        <div className="part-card">
-          <div className="part-header">
-            <strong>Top Hard Request IDs</strong>
-          </div>
-
-          <div className="top-request-grid">
-            {topRequestIds.map((r, index) => (
-              <div
-                key={r.id}
-                className={`request-card ${index === 0 ? "top" : "normal"}`}
-              >
-                <div className="request-id">{r.id}</div>
-
-                <div className="request-count">
-                  {r.count} {r.count === 1 ? "time" : "times"}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="card-actions-3-cols">
+        {/* Soft Bounce Log Output Container */}
+        <div className="result-output-box">
+          <div className="output-box-header">
+            <span className="output-title text-orange">
+              Soft Bounce Emails<space></space> (
+              {(bounceGroups["Soft"] || []).length})
+            </span>
             <button
-              className="btn small"
-              onClick={() =>
+              className="btn-inline-copy"
+              onClick={() => {
+                const lines = (bounceGroups["Soft"] || [])
+                  .map((r) => `${r.email} | ${r.tag} | ${r.type} | ${r.date}`)
+                  .join("\n");
                 navigator.clipboard.writeText(
-                  topRequestIds.map((r) => `${r.id} → ${r.count}`).join("\n")
-                )
-              }
+                  lines || "No soft bounce data yet."
+                );
+              }}
             >
-              Copy
-            </button>
-
-            <button
-              className="btn small primary"
-              onClick={() =>
-                downloadText(
-                  topRequestIds.map((r) => `${r.id} → ${r.count}`).join("\n"),
-                  "top_request_ids.txt"
-                )
-              }
-            >
-              Export TXT
+              📋 Copy
             </button>
           </div>
+          <textarea
+            className="output-display-area"
+            readOnly
+            value={(bounceGroups["Soft"] || [])
+              .map(
+                (r) =>
+                  `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
+              )
+              .join("\n")}
+            placeholder='No soft bounce data yet. Click "Analyze" to see results.'
+          />
         </div>
-      )}
 
-      {/* Entity Results */}
-      {sortedEntities.length > 0 && (
-        <div className="parts-grid">
-          {sortedEntities.map((entity) => {
-            const group = entityGroups[entity];
-            const lines = group
-              .map((r) => `${r.email} ${r.session} ${r.emailOrder} ${r.entity}`)
-              .join("\n");
-
-            return (
-              <div key={entity} className="part-card">
-                <div className="part-header">
-                  <strong>{entity}</strong>
-                  <span className="part-count">({group.length} emails)</span>
-                </div>
-                <textarea
-                  className="part-area"
-                  readOnly
-                  rows={Math.min(12, group.length + 2)}
-                  value={lines}
-                />
-                <div className="card-actions-3-cols">
-                  <button
-                    className="btn small"
-                    onClick={() => navigator.clipboard.writeText(lines)}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    className="btn small"
-                    onClick={() => exportEntityGroupTXT(entity)}
-                  >
-                    TXT
-                  </button>
-                  <button
-                    className="btn small primary"
-                    onClick={() => exportEntityGroupXLSX(entity)}
-                  >
-                    XLSX
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          <div
-            className="part-card"
-            style={{ background: "var(--color-bg-secondary)" }}
-          >
-            <div className="part-header">
-              <strong>
-                All Entities Combined (
-                {Object.values(entityGroups).flat().length} total)
-              </strong>
-            </div>
+        {/* Remaining Hard Bounces Comparison Output (Aligned Next to Hard & Soft Boxes) */}
+        {/* Remaining Hard Bounces Comparison Output (With fixed button spacing) */}
+        <div className="result-output-box">
+          <div className="output-box-header">
+            <span className="output-title text-green">
+              Remaining Hard Bounces<space></space> ({compareResults.length})
+            </span>
             <div
-              className="card-actions-3-cols"
-              style={{ padding: "15px", justifyContent: "center" }}
+              className="header-action-cluster"
+              style={{
+                display: "flex",
+                gap: "6px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
             >
-              <button className="btn primary" onClick={exportAllEntitiesXLSX}>
-                Export All XLSX
+              <button
+                className="btn-inline-copy"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    compareResults
+                      .map((r) => `${r.email} | ${r.tag}`)
+                      .join("\n") || ""
+                  );
+                }}
+              >
+                📋 Copy
+              </button>
+              <button className="btn-inline-action" onClick={exportResultsTXT}>
+                📄 TXT
+              </button>
+              <button className="btn-inline-action" onClick={exportResultsXLSX}>
+                📊 XLSX
               </button>
             </div>
           </div>
+          <textarea
+            className="output-display-area wide-view"
+            readOnly
+            value={compareResults
+              .map((r) => `${r.email} | ${r.tag}`)
+              .join("\n")}
+            placeholder='No comparison results yet. Paste list in "iMacros Compare" and click "Compare".'
+          />
         </div>
-      )}
+      </div>
 
       {(bounceError || listError) && (
-        <div className="error" style={{ marginTop: 20 }}>
-          {bounceError || listError}
-        </div>
+        <div className="global-error-toast">{bounceError || listError}</div>
       )}
-    </>
+    </div>
   );
 
   // ===============================================
@@ -2281,7 +2222,7 @@ export default function App() {
           }`}
           onClick={() => setSelectedLogSubTab("hardbounce")}
         >
-          Hard Bounce Analyzer
+          Bounce Analyzer
         </button>
       </div>
 
@@ -3196,7 +3137,14 @@ export default function App() {
       </p>
 
       <div className="controls-partitioner">
-        <div className="control-col">
+        <div
+          className="control-col"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+          }}
+        >
           <label className="label">
             Paste your list here (one entry per line):
           </label>
