@@ -1416,8 +1416,9 @@ export default function App() {
   const [totalCount, setTotalCount] = useState(0);
   // Entity List States
   const [listInput, setListInput] = useState("");
-
+  const [imacrosRows, setImacrosRows] = useState([]);
   const [compareResults, setCompareResults] = useState([]);
+  const [compareSoftResults, setCompareSoftResults] = useState([]);
   const [listError, setListError] = useState("");
   const listCtrl = useStableInput(listInput, setListInput);
   // Webautomat Bounce
@@ -1633,7 +1634,7 @@ export default function App() {
   };
 
   // FIXED: Process Entity List - now working correctly
-  const processCompareList = () => {
+  const processCompareHard = () => {
     setListError("");
     setCompareResults([]);
 
@@ -1642,40 +1643,214 @@ export default function App() {
       return;
     }
 
+    const parsedRows = [];
     const pastedEmails = new Set();
 
-    listInput.split(/\r?\n/).forEach((line) => {
-      const match = line.match(
-        /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
-      );
+    listInput
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .forEach((line) => {
+        const parts = line.trim().split(/\s+/);
 
-      if (match) {
-        pastedEmails.add(match[0].toLowerCase());
-      }
-    });
+        // At least an email must exist
+        if (parts.length < 1) return;
+
+        const row = {
+          email: parts[0].trim(),
+          list: parts[1] || "",
+          profile_name: parts[2] || "",
+        };
+
+        parsedRows.push(row);
+
+        pastedEmails.add(row.email.trim().toLowerCase());
+      });
+
+    // Save the ORIGINAL iMacros rows
+    setImacrosRows(parsedRows);
 
     const hardList = bounceGroups["Hard"] || [];
+    console.log("Hard count:", hardList.length);
+    console.log("Pasted count:", pastedEmails.size);
 
-    const remaining = hardList.filter(
-      (item) => !pastedEmails.has(item.email.toLowerCase())
-    );
+    console.log("First Hard:", hardList[0]);
+    console.log("First Pasted:", [...pastedEmails][0]);
 
+    const remaining = hardList.filter((item) => {
+      const exists = pastedEmails.has(item.email.trim().toLowerCase());
+
+      console.log(item.email, "=>", exists);
+
+      return !exists;
+    });
     setCompareResults(remaining);
   };
-  const exportHardIMacros = () => {
-    alert("Export Hard iMacros - Coming Soon");
+  const processCompareSoft = () => {
+    setListError("");
+    setCompareSoftResults([]);
+
+    if (!listInput.trim()) {
+      setListError("Please paste the email list.");
+      return;
+    }
+
+    const parsedRows = [];
+    const pastedEmails = new Set();
+
+    listInput
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .forEach((line) => {
+        const parts = line.trim().split(/\s+/);
+
+        // At least an email must exist
+        if (parts.length < 1) return;
+
+        const row = {
+          email: parts[0].trim(),
+          list: parts[1] || "",
+          profile_name: parts[2] || "",
+        };
+
+        parsedRows.push(row);
+
+        pastedEmails.add(row.email.trim().toLowerCase());
+      });
+
+    setImacrosRows(parsedRows);
+
+    const softList = bounceGroups["Soft"] || [];
+
+    console.log("Soft count:", softList.length);
+    console.log("Pasted count:", pastedEmails.size);
+    console.log("First Soft:", softList[0]);
+    console.log("First Pasted:", [...pastedEmails][0]);
+
+    const remaining = softList.filter((item) => {
+      const exists = pastedEmails.has(item.email.trim().toLowerCase());
+
+      console.log(item.email, "=>", exists);
+
+      return !exists;
+    });
+
+    setCompareSoftResults(remaining);
+  };
+  const exportHardIMacros = async () => {
+    const rows = imacrosRows;
+    try {
+      const response = await fetch(
+        "https://n8n.cmhwarmup.com/webhook-test/bbe66832-1ba6-4905-a65a-e75a44402229",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "hard",
+            countWebautomat: compareResults.length,
+            rows,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Webhook failed");
+      }
+
+      alert("Hard iMacros sent to n8n successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send data to n8n.");
+    }
   };
 
-  const exportSoftIMacros = () => {
-    alert("Export Soft iMacros - Coming Soon");
+  const exportSoftIMacros = async () => {
+    const rows = imacrosRows;
+    try {
+      const response = await fetch(
+        "https://n8n.cmhwarmup.com/webhook-test/bbe66832-1ba6-4905-a65a-e75a44402229",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "soft",
+            rows,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Webhook failed");
+      }
+
+      alert("Soft iMacros sent to n8n successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send data to n8n.");
+    }
   };
 
-  const exportHardWebautomat = () => {
-    alert("Export Hard Webautomat - Coming Soon");
+  const exportHardWebautomat = async () => {
+    const rows = webautoData;
+
+    try {
+      const response = await fetch(
+        "https://n8n.cmhwarmup.com/webhook-test/0987545d-eb89-466d-b421-e1d5e5c21bcb",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "hard",
+            countWebautomat: webautoData.length,
+            rows,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Webhook failed");
+      }
+
+      alert("Hard Webautomat sent to n8n successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send data to n8n.");
+    }
   };
 
-  const exportSoftWebautomat = () => {
-    alert("Export Soft Webautomat - Coming Soon");
+  const exportSoftWebautomat = async () => {
+    const rows = webautoData;
+
+    try {
+      const response = await fetch(
+        "https://n8n.cmhwarmup.com/webhook-test/0987545d-eb89-466d-b421-e1d5e5c21bcb",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "soft",
+            countWebautomat: webautoData.length,
+            rows,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Webhook failed");
+      }
+
+      alert("Soft Webautomat sent to n8n successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send data to n8n.");
+    }
   };
   // Export functions
   const exportDateGroupTXT = (date) => {
@@ -1737,6 +1912,26 @@ export default function App() {
     exportToXLSX(rows, "remaining_hard_bounces.xlsx");
   };
 
+  const exportSoftResultsTXT = () => {
+    const txt = compareSoftResults
+      .map(
+        (r) => `${r.email} | ${r.tag} | ${r.type} | ${r.date} | ${r.requestId}`
+      )
+      .join("\n");
+    downloadText(txt, "remaining_soft_bounces.txt");
+  };
+
+  const exportSoftResultsXLSX = () => {
+    const rows = compareSoftResults.map((r) => ({
+      Email: r.email,
+      Tag: r.tag,
+      Type: r.type,
+      Date: r.date,
+      Request_ID: r.requestId,
+    }));
+
+    exportToXLSX(rows, "remaining_soft_bounces.xlsx");
+  };
   // File handlers
 
   const handleBounceFileChange = (event) => {
@@ -1824,20 +2019,30 @@ export default function App() {
         <h2>Bounce Analyzer</h2>
       </div>
       <div className="stats-badge-grid">
-        <div className="badge-card card-red">
-          <span className="badge-title">Hard Bounce</span>
+        <div
+          className="badge-card card-red"
+          style={{ cursor: "pointer" }}
+          title="Click to copy"
+          onClick={() => navigator.clipboard.writeText(String(hardCount))}
+        >
+          <span className="badge-title">Hard Bounce 📋</span>
           <span className="badge-value">{hardCount}</span>
           <span className="badge-subtitle">Hard bounce emails</span>
         </div>
-        <div className="badge-card card-orange">
-          <span className="badge-title">Soft Bounce</span>
+        <div
+          className="badge-card card-orange"
+          style={{ cursor: "pointer" }}
+          title="Click to copy"
+          onClick={() => navigator.clipboard.writeText(String(softCount))}
+        >
+          <span className="badge-title">Soft Bounce 📋</span>
           <span className="badge-value">{softCount}</span>
           <span className="badge-subtitle">Soft bounce emails</span>
         </div>
         <div
           className="badge-card card-blue"
           style={{ cursor: topRequestIds.length ? "pointer" : "default" }}
-          title={topRequestIds.length ? "Click to copy Request ID" : ""}
+          title={topRequestIds.length ? "Click to copy" : ""}
           onClick={() => {
             if (topRequestIds.length) {
               navigator.clipboard.writeText(topRequestIds[0].id);
@@ -1855,8 +2060,63 @@ export default function App() {
           </span>
         </div>
         <div className="badge-card card-green">
-          <span className="badge-title">Remaining Hard Bounce Emails</span>
-          <span className="badge-value">{compareResults.length}</span>
+          <span className="badge-title">Remaining Bounce 📋</span>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-around",
+              alignItems: "center",
+              marginTop: 12,
+              marginBottom: 10,
+            }}
+          >
+            {/* HARD */}
+            <div style={{ textAlign: "center" }}>
+              <div
+                className="badge-value"
+                style={{ cursor: "pointer" }}
+                title="Copy Hard remaining"
+                onClick={() =>
+                  navigator.clipboard.writeText(String(compareResults.length))
+                }
+              >
+                {compareResults.length}
+              </div>
+
+              <div className="badge-subtitle">Hard</div>
+            </div>
+
+            <div
+              style={{
+                width: 1,
+                height: 45,
+                background: "var(--color-border)",
+              }}
+            />
+
+            {/* SOFT */}
+            <div style={{ textAlign: "center" }}>
+              <div
+                className="badge-value"
+                style={{
+                  cursor: "pointer",
+                  color: "#14b8a6",
+                }}
+                title="Copy Soft remaining"
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    String(compareSoftResults.length)
+                  )
+                }
+              >
+                {compareSoftResults.length}
+              </div>
+
+              <div className="badge-subtitle">Soft</div>
+            </div>
+          </div>
+
           <span className="badge-subtitle">Remaining after comparison</span>
         </div>
       </div>
@@ -1909,18 +2169,26 @@ export default function App() {
 
           <div className="form-group inline-top-margin">
             <label className="field-label">Date Filter (optional):</label>
-            <div className="input-with-icon">
-              <input
-                type="text"
-                ref={dateFilterCtrl.ref}
-                className="modern-input"
-                value={dateFilterCtrl.value}
-                onChange={dateFilterCtrl.onChange}
-                placeholder="dd/mm/yyyy"
-                autoComplete="off"
-              />
-              <span className="calendar-placeholder-icon">📅</span>
-            </div>
+
+            <input
+              type="date"
+              className="modern-input"
+              value={
+                dateFilter
+                  ? dateFilter.split("/").reverse().join("-") // dd/mm/yyyy -> yyyy-mm-dd
+                  : ""
+              }
+              onChange={(e) => {
+                if (!e.target.value) {
+                  setDateFilter("");
+                  return;
+                }
+
+                const [year, month, day] = e.target.value.split("-");
+
+                setDateFilter(`${day}/${month}/${year}`);
+              }}
+            />
           </div>
 
           <div className="form-group inline-top-margin">
@@ -1968,16 +2236,26 @@ export default function App() {
             <div className="button-cluster">
               <button
                 className="btn btn-purple"
-                onClick={processCompareList}
+                onClick={processCompareHard}
                 disabled={!listInput.trim()}
               >
-                Compare
+                Compare Hard
               </button>
+
+              <button
+                className="btn btn-purple"
+                onClick={processCompareSoft}
+                disabled={!listInput.trim()}
+              >
+                Compare Soft
+              </button>
+
               <button
                 className="btn btn-gray"
                 onClick={() => {
                   setListInput("");
                   setCompareResults([]);
+                  setCompareSoftResults([]);
                   setListError("");
                 }}
               >
@@ -2139,7 +2417,7 @@ export default function App() {
         </div>
 
         {/* Remaining Hard Bounces Comparison Output (Aligned Next to Hard & Soft Boxes) */}
-        {/* Remaining Hard Bounces Comparison Output (With fixed button spacing) */}
+
         <div className="result-output-box">
           <div className="output-box-header">
             <span className="output-title text-green">
@@ -2178,6 +2456,59 @@ export default function App() {
             className="output-display-area wide-view"
             readOnly
             value={compareResults
+              .map((r) => `${r.email} | ${r.tag}`)
+              .join("\n")}
+            placeholder='No comparison results yet. Paste list in "iMacros Compare" and click "Compare".'
+          />
+        </div>
+
+        {/* Remaining soft Bounces Comparison Output (Aligned Next to Hard & Soft Boxes) */}
+
+        <div className="result-output-box">
+          <div className="output-box-header">
+            <span className="output-title text-green">
+              Remaining Soft Bounces<space></space> ({compareSoftResults.length}
+              )
+            </span>
+            <div
+              className="header-action-cluster"
+              style={{
+                display: "flex",
+                gap: "6px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <button
+                className="btn-inline-copy"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    compareSoftResults
+                      .map((r) => `${r.email} | ${r.tag}`)
+                      .join("\n") || ""
+                  );
+                }}
+              >
+                📋 Copy
+              </button>
+              <button
+                className="btn-inline-action"
+                onClick={exportSoftResultsTXT}
+              >
+                📄 TXT
+              </button>
+              <button
+                className="btn-inline-action"
+                onClick={exportSoftResultsXLSX}
+              >
+                📊 XLSX
+              </button>
+            </div>
+          </div>
+          <textarea
+            className="output-display-area wide-view"
+            readOnly
+            value={compareSoftResults
               .map((r) => `${r.email} | ${r.tag}`)
               .join("\n")}
             placeholder='No comparison results yet. Paste list in "iMacros Compare" and click "Compare".'
