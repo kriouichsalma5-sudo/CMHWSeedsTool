@@ -1194,3 +1194,17 @@ body[data-theme="dark"] .planner-settings-card {
   font-weight: 600;
   color: var(--color-text-muted);
 }
+.app-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 0.7rem;
+  opacity: 0.6;
+  padding: 6px 0;
+  background: var(--color-bg, transparent);
+  color: var(--color-text);
+  z-index: 10;
+  pointer-events: none; /* so it never blocks clicks on content underneath */
+}
