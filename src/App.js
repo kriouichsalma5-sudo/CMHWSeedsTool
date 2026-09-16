@@ -3672,17 +3672,7 @@ export default function App() {
       {selectedTab === "analyzer" && <LogAnalyzerInterface />}
       {selectedTab === "planner" && <PlannerInterface />}
       {selectedTab === "partitioner" && <PartitionerInterface />}
-      <footer
-        style={{
-          textAlign: "center",
-          fontSize: "0.75rem",
-          opacity: 0.6,
-          padding: "16px 0 8px",
-          color: "var(--color-text)",
-        }}
-      >
-        Created by Salma Kriouich CMHW
-      </footer>
+      <footer className="app-footer">Created by Salma Kriouich CMHW</footer>
     </div>
   );
 }
